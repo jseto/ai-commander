@@ -284,7 +284,7 @@ land / retire, branch cleanup), and talk to you. It must not pick up a task
 — or a question — itself; the sole
 exception is the last row of the routing table below.
 
-**The atomic-specs flow must be done EXCLUSIVELY by the children.** You launch a child with the user's input and delegate to it the FULL flow: from atomic specs (Gherkin/design), TDD implementation (tests passing), to a code audit (code-auditor). The child goes back to you ONLY when it needs the user's input or when it has completed the full task through to opening a PR. Your job is ONLY to manage child task assignments and handle child feedback (whether a question for the user or a finished task report).
+**The atomic-specs flow must be done EXCLUSIVELY by the children.** You launch a child with the user's input and delegate to it the FULL flow: from atomic specs (Gherkin/design), through implementation (per the `implement` skill), to a code audit (code-auditor). The child goes back to you ONLY when it needs the user's input or when it has completed the full task through to opening a PR. Your job is ONLY to manage child task assignments and handle child feedback (whether a question for the user or a finished task report).
 
 Routing rule for every incoming message:
 
@@ -339,7 +339,7 @@ the initial values:
 | Level | When to use | Model | Thinking |
 |---|---|---|---|
 | `easy` | chores, trims, config/docs edits, small fixes | `opencode-zen-free/mimo-v2.6-flash-free` | `medium` |
-| `standard` (default) | features / bug fixes with the full specs+TDD flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
+| `standard` (default) | features / bug fixes with the full specs flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
 | `hard` | architecture, root-cause analysis, long-haul work | `opencode-go/deepseek-v4.1-flash` | `xhigh` |
 
 Pick the level when writing the brief and pass it at spawn:

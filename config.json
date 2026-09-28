@@ -8,7 +8,7 @@
         "thinking": "medium"
       },
       "standard": {
-        "description": "Features and bug fixes with the full specs + TDD flow.",
+        "description": "Features and bug fixes with the full specs flow.",
         "model": "opencode-zen-free/mimo-v2.6-flash-free",
         "thinking": "xhigh"
       },

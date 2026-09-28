@@ -149,7 +149,7 @@ fi
 #    brief lives in the main checkout) instead of being typed into the
 #    composer: a send-keys kickoff races pi's startup, and a dropped Enter
 #    leaves the prompt stranded in the input box — a child that never starts.
-KICKOFF="Read the task brief at $TF and complete the full flow (atomic specs, TDD tests passing, code audit). Commit your work on the current branch ($BRANCH). Push your branch to origin and create a pull request against development using gh pr create. Write your report to $RF (what you changed, test results, PR link, notes). Do not use notify, ntfy, or any other external notification mechanism. When done or blocked, use only $SCRIPT_DIR/sub-report.sh $TASK \"DONE: <one-line summary> (PR #...)\" (or BLOCKED: <reason>)"
+KICKOFF="Read the task brief at $TF and complete the full flow (atomic specs, implementation, code audit). Commit your work on the current branch ($BRANCH). Push your branch to origin and create a pull request against development using gh pr create. Write your report to $RF (what you changed, test results, PR link, notes). Do not use notify, ntfy, or any other external notification mechanism. When done or blocked, use only $SCRIPT_DIR/sub-report.sh $TASK \"DONE: <one-line summary> (PR #...)\" (or BLOCKED: <reason>)"
 
 # 5. Boot pi in a named tmux session, rooted in the worktree. The isolated
 #    agent directory deliberately provides no extensions or packages.
