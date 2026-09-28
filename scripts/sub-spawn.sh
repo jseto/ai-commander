@@ -38,10 +38,31 @@ fi
 # tmux session created below.
 export MAIN_SESSION MAIN_PANE
 
-usage() { die "usage: ${0##*/} <task-name> <repo-dir> [brief-file]"; }
+usage() { die "usage: ${0##*/} <task-name> <repo-dir> [brief-file] [--level <name>] [--model <pattern>] [--thinking <level>]"; }
+
+# Positionals may be interleaved with the level/model/thinking overrides;
+# every malformed invocation dies here, before a worktree is leased.
+POSITIONAL=()
+LEVEL_ARG=""
+MODEL_ARG=""
+THINKING_ARG=""
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    -h|--help)  usage ;;
+    --level)    [ "$#" -ge 2 ] || die "--level needs a value";    LEVEL_ARG=$2;    shift 2 ;;
+    --model)    [ "$#" -ge 2 ] || die "--model needs a value";    MODEL_ARG=$2;    shift 2 ;;
+    --thinking) [ "$#" -ge 2 ] || die "--thinking needs a value"; THINKING_ARG=$2; shift 2 ;;
+    -*)         die "unknown option: $1" ;;
+    *)          POSITIONAL+=("$1"); shift ;;
+  esac
+done
+set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
 
 need git tmux treehouse jq realpath
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then usage; fi
+# Model/thinking for this child: --level/--model/--thinking > SUB_* env >
+# config/task-levels.json (warns + resolves to nothing on any config problem).
+CHILD_LAUNCH_FLAGS=$(resolve_child_launch_flags "$LEVEL_ARG" "$MODEL_ARG" "$THINKING_ARG")
 
 TASK=$1
 REPO=$2
@@ -144,12 +165,13 @@ sleep 0.5
 # --approve resolves pi's project-trust decision for this process only
 # (docs/security.md: a command-line trust override applies before saved
 # decisions and the defaultProjectTrust setting). Every fresh worktree is a
-# folder pi has never seen, and the isolated child agent dir carries neither
-# an entry for it nor a defaultProjectTrust policy, so without --approve pi
-# stops on the folder-trust prompt and the kickoff — already handed over as
-# argv — is never processed. Unlike the manual Enter this replaces, it
-# persists no trust.json entry.
-printf -v PI_LAUNCH '%q -n %q --no-extensions --approve %q' "$PI_BIN" "$TASK" "$KICKOFF"
+# folder pi has never seen, and the isolated child agent dir has no
+# trust.json entry for it, so without --approve pi stops on the folder-trust
+# prompt and the kickoff — already handed over as argv — is never processed.
+# Unlike the manual Enter this replaces, it persists no trust.json entry.
+# The resolved model/thinking options join the command line ahead of the
+# kickoff (pi_launch_command), where pi parses them as options.
+PI_LAUNCH=$(pi_launch_command "$PI_BIN" "$TASK" "$CHILD_LAUNCH_FLAGS" "$KICKOFF")
 # tmux_send_line retries the Enter (and re-types the line) until the pane shows
 # it was picked up, so a dropped keystroke cannot leave the child idle. An
 # unconfirmed launch fails the spawn: reporting handles for a child that never
@@ -176,6 +198,7 @@ if [ -n "$VIEWER" ]; then
 fi
 info "  brief:    $TF"
 info "  report:   $RF"
+info "  launch:   ${CHILD_LAUNCH_FLAGS:-model/thinking inherited from settings}"
 info "  scripts:  $SCRIPT_DIR"
 info ""
 info "--- pane tail ---"

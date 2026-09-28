@@ -317,6 +317,41 @@ Hard rules:
   get a spawned or live working child. Only an explicit request to change
   the main session's own behaviour short-circuits the relay.
 
+### Lavish reviews (Telegram)
+
+When the user must be consulted through a Lavish HTML artifact, put **both
+links in the chat** in the same message: the local annotation-capable session
+link (Tailscale/LAN) and the ht-ml.app share link (private by default —
+include the password). Keep the review loop in the chat; do not add Telegram
+menu surfaces for it. The `lavish-telegram` extension (pi-config repo)
+automates link delivery and the background feedback poll.
+
+### Child model and thinking levels
+
+The difficulty of the task decides the child's model and thinking level.
+The three levels live in `config/task-levels.json` (local to this repo — edit
+it to retune; these are the initial values):
+
+| Level | When to use | Model | Thinking |
+|---|---|---|---|
+| `easy` | chores, trims, config/docs edits, small fixes | `opencode-zen-free/mimo-v2.6-flash-free` | `medium` |
+| `standard` (default) | features / bug fixes with the full specs+TDD flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
+| `hard` | architecture, root-cause analysis, long-haul work | `opencode-go/deepseek-v4.1-flash` | `xhigh` |
+
+Pick the level when writing the brief and pass it at spawn:
+
+```bash
+"$SCRIPTS/sub-spawn.sh" <task> <repo> [brief-file] --level easy|standard|hard
+```
+
+`--model <pattern>` / `--thinking <level>` override the level's mapping in
+whole or in part (env equivalents `SUB_LEVEL`, `SUB_MODEL`, `SUB_THINKING`;
+`SUB_LEVELS_CONFIG` relocates the config file). Without any override the
+config's `default` level applies; when the config cannot be read the child
+inherits `defaultThinkingLevel` / `modelThinkingLevels` / `defaultProjectTrust`
+from the global pi settings instead — no config problem can break a spawn.
+Spec: `specs/child-task-levels/`, tests: `tests/task-levels.test.sh`.
+
 ### Orchestrator pattern: main session controls the children
 
 Conventions: the main session lives in tmux session `pi-main`; every child

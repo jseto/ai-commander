@@ -13,6 +13,16 @@ _SUB_MAIN_SESSION_WAS_SET=${MAIN_SESSION+x}
 : "${PI_BOOT_DELAY:=3}"          # seconds to wait for the pi TUI to boot
 : "${SCRATCH_DIR:=tmp/pi-sub}"      # gitignored scratch dir in the main checkout
 
+# This script's own directory: anchors repo-local defaults (the child
+# difficulty levels live in config/task-levels.json, next to this scripts/ dir).
+# Pure parameter expansion — no external dirname at source time: this file
+# must stay sourceable with a restricted PATH (tests/sub-common.test.sh) and
+# under set -e.
+_SUB_COMMON_DIR=${BASH_SOURCE[0]%/*}
+if [ -z "$_SUB_COMMON_DIR" ] || [ "$_SUB_COMMON_DIR" = "${BASH_SOURCE[0]}" ]; then
+  _SUB_COMMON_DIR=.
+fi
+
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -92,6 +102,65 @@ task_file()    { printf '%s/%s/tasks/%s.md'    "$1" "$SCRATCH_DIR" "$2"; }
 report_file()  { printf '%s/%s/reports/%s.md'  "$1" "$SCRATCH_DIR" "$2"; }
 patch_file()   { printf '%s/%s/reports/%s.patch' "$1" "$SCRATCH_DIR" "$2"; }
 
+# The child difficulty-levels config (AGENTS.md, "Child model and thinking
+# levels"): config/task-levels.json next to this scripts/ directory.
+# SUB_LEVELS_CONFIG relocates the file.
+levels_config() {
+  printf '%s' "${SUB_LEVELS_CONFIG:-$_SUB_COMMON_DIR/../config/task-levels.json}"
+}
+
+# Echo the quoted --model/--thinking option words for a child pi launch
+# (possibly empty). Precedence: explicit flag > SUB_MODEL/SUB_THINKING env >
+# the selected level's mapping in the levels config; the level itself is:
+# explicit flag > SUB_LEVEL env > config "default". Always exits 0 — a
+# missing/malformed config or an unknown level warns on stderr and degrades
+# to no flags, so the child inherits defaultThinkingLevel/modelThinkingLevels
+# from the global settings instead of spawning ever failing.
+resolve_child_launch_flags() { # $1=level $2=model $3=thinking
+  local level=${1:-} model=${2:-} thinking=${3:-} cfg out=""
+  [ -n "$model" ] || model=${SUB_MODEL:-}
+  [ -n "$thinking" ] || thinking=${SUB_THINKING:-}
+  [ -n "$level" ] || level=${SUB_LEVEL:-}
+  if [ -z "$model" ] || [ -z "$thinking" ]; then
+    cfg=$(levels_config)
+    if [ ! -f "$cfg" ]; then
+      warn "levels config not found: $cfg — child inherits model/thinking from settings"
+    elif ! jq -e '(.levels | type) == "object"' "$cfg" >/dev/null 2>&1; then
+      warn "levels config invalid: $cfg — child inherits model/thinking from settings"
+    else
+      [ -n "$level" ] || level=$(jq -r '.default // empty' "$cfg" 2>/dev/null || true)
+      if [ -z "$level" ]; then
+        warn "levels config has no default level: $cfg — child inherits model/thinking from settings"
+      elif jq -e --arg l "$level" '.levels | has($l)' "$cfg" >/dev/null 2>&1; then
+        [ -n "$model" ] || model=$(jq -r --arg l "$level" '.levels[$l].model // empty' "$cfg" 2>/dev/null || true)
+        [ -n "$thinking" ] || thinking=$(jq -r --arg l "$level" '.levels[$l].thinking // empty' "$cfg" 2>/dev/null || true)
+      else
+        warn "unknown level '$level' in $cfg — child inherits model/thinking from settings"
+      fi
+    fi
+  fi
+  if [ -n "$model" ]; then
+    out=$(printf '%q %q' --model "$model")
+  fi
+  if [ -n "$thinking" ]; then
+    out+="${out:+ }$(printf '%q %q' --thinking "$thinking")"
+  fi
+  printf '%s' "$out"
+  return 0
+}
+
+# Echo the pi command line that boots a child session. The resolved
+# model/thinking option words ($3, from resolve_child_launch_flags) sit among
+# the options — before the kickoff message argument — so pi parses them as
+# options, not as part of the prompt.
+pi_launch_command() { # $1=pi-bin $2=task $3=option words $4=kickoff
+  if [ -n "${3:-}" ]; then
+    printf '%q -n %q --no-extensions %s --approve %q' "$1" "$2" "$3" "$4"
+  else
+    printf '%q -n %q --no-extensions --approve %q' "$1" "$2" "$4"
+  fi
+}
+
 # Prepare an isolated Pi agent directory for a child. It preserves non-extension
 # resources such as settings metadata, skills, prompts, and themes, but gives
 # the child no extensions or packages at all. The directory lives in the
@@ -106,8 +175,11 @@ prepare_child_agent_dir() { # $1=destination dir; echoes dir
   # from the global settings: without them the child has no configured default
   # and pi falls through to its built-in per-provider fallback map, landing on
   # an arbitrary model (e.g. google/gemini-3.1-pro-preview) whenever the
-  # target repo has no project-level .pi/settings.json.
-  model_cfg=$(jq -c '{defaultProvider, defaultModel, enabledModels}
+  # target repo has no project-level .pi/settings.json. defaultThinkingLevel /
+  # modelThinkingLevels / defaultProjectTrust (specs/child-task-levels) ride
+  # along as the baseline when sub-spawn passes no --model/--thinking flags.
+  model_cfg=$(jq -c '{defaultProvider, defaultModel, enabledModels,
+    defaultThinkingLevel, modelThinkingLevels, defaultProjectTrust}
     | with_entries(select(.value != null))' "$HOME/.pi/agent/settings.json" 2>/dev/null || printf '{}')
   jq -cn --argjson cfg "$model_cfg" '$cfg + {packages: []}' > "$agent_dir/settings.json" 2>/dev/null \
     || printf '{"packages":[]}\n' > "$agent_dir/settings.json" # jq absent → never leave an empty file
