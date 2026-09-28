@@ -1,18 +1,18 @@
 Feature: mu — launch pi in the "pi-main" tmux session
 
-  mu (mu.sh) supersedes pi.sh. Where pi.sh refused the reserved session names
+  mu supersedes pi.sh. Where pi.sh refused the reserved session names
   "pi-main" and "pi-*", mu deliberately targets the orchestrator session
   "pi-main": it is a thin, standalone, root-level launcher that runs pi inside
   that one durable session. It coexists with scripts/start-main.sh, the
-  orchestrator's own launcher of the same session. The file is named mu.sh
-  and is installed on PATH as the command `mu` through a symlink in
-  ~/.local/bin.
+  orchestrator's own launcher of the same session. The file is named `mu` (no
+  .sh suffix) in the repository root and is installed on PATH as the command
+  `mu` through a symlink in ~/.local/bin.
 
   Scenario: Create a detached session named exactly pi-main at the repository root [REQ-1]
     Given no tmux session named "pi-main" exists
     When the user runs mu
     Then mu creates a detached tmux session named exactly "pi-main"
-    And the session is rooted at the repository root that contains mu.sh
+    And the session is rooted at the repository root that contains the mu executable
     And mu does not refuse the reserved name "pi-main"
 
   Scenario: Forward extra arguments to pi unchanged [REQ-2]
@@ -48,7 +48,7 @@ Feature: mu — launch pi in the "pi-main" tmux session
     And no tmux session is created
 
   Scenario: Root the session at the real repository when invoked through a PATH symlink [REQ-8]
-    Given "~/.local/bin/mu" is a symlink to the repository's mu.sh
+    Given "~/.local/bin/mu" is a symlink to the repository's mu file
     When the user runs mu
-    Then the session is rooted at the directory containing the real mu.sh, not at the symlink's directory
-    And running ./mu.sh directly roots the session exactly as before
+    Then the session is rooted at the directory containing the real mu file, not at the symlink's directory
+    And running ./mu directly roots the session exactly as before
