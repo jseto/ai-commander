@@ -223,6 +223,9 @@ open_viewer_window() { # $1=task $2=child-session $3=invoking-pane (optional)
     target=$(tmux display-message -p -t "$anchor" '#S' 2>/dev/null) || return 0
     tmux split-window -h -t "$anchor" \
       "env -u TMUX tmux attach -t $child" >/dev/null 2>&1 || return 0
+    # Keep the cursor focus where it was: the split made the viewer pane
+    # active, so hand focus back to the anchor pane before the layout settles.
+    tmux select-pane -t "$anchor" >/dev/null 2>&1 || true
     tmux set-window-option -t "$target" main-pane-width 50% >/dev/null 2>&1 || true
     tmux select-layout -t "$target" main-vertical >/dev/null 2>&1 || true
     tmux resize-pane -t "$anchor" -x 50% >/dev/null 2>&1 || true
