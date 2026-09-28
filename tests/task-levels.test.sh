@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Behavioural tests for the child task-levels feature (config/task-levels.json,
+# Behavioural tests for the child task-levels feature (root config.json,
 # resolve_child_launch_flags, pi_launch_command, thinking/trust inheritance,
 # sub-spawn flag parsing).
 # One test per Scenario in specs/child-task-levels/child-task-levels.feature.
 #
 # Hermetic by construction: resolver tests clear SUB_LEVEL/SUB_MODEL/
 # SUB_THINKING/SUB_LEVELS_CONFIG from the environment and re-add exactly what
-# the scenario needs; REQ-1/REQ-2/REQ-3 exercise the repository's real
-# config/task-levels.json (the shipped defaults are part of the contract).
+# the scenario needs; REQ-1/REQ-2/REQ-3 exercise the repository's real root
+# config.json (the shipped defaults are part of the contract).
 # The inheritance test redirects $HOME to a scratch fixture, like
 # tests/sub-common.test.sh, so no real ~/.pi state is read or touched.
 set -u
@@ -15,7 +15,7 @@ set -u
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 COMMON=${SUB_COMMON_UNDER_TEST:-$ROOT/scripts/_sub-common.sh}
 SPAWN=${SUB_SPAWN_UNDER_TEST:-$ROOT/scripts/sub-spawn.sh}
-CONFIG=${TASK_LEVELS_CONFIG_UNDER_TEST:-$ROOT/config/task-levels.json}
+CONFIG=${TASK_LEVELS_CONFIG_UNDER_TEST:-$ROOT/config.json}
 
 failures=0
 fail() { printf '  ASSERT FAILED: %s\n' "$*" >&2; exit 1; }
@@ -66,6 +66,11 @@ spawn_bad() {
 
 t_req1_default_level_uses_shipped_defaults() {
   jq_ok || return 0
+  # The shipped contract: root config.json, levels under .taskLevels.
+  [ -f "$CONFIG" ] || fail "expected the shipped config at $CONFIG"
+  jq -e '(.taskLevels.levels | type) == "object"
+         and (.taskLevels.default | type) == "string"' "$CONFIG" >/dev/null \
+    || fail "$CONFIG must hold the levels under the taskLevels section"
   resolve "" "" ""
   [ "$RC" -eq 0 ] || fail "expected exit 0, got $RC ($RERR)"
   [ -z "$RERR" ] || fail "expected no warning, got: $RERR"
@@ -111,8 +116,8 @@ t_req5_missing_config_degrades_to_no_flags() {
   [ "$RC" -eq 0 ] || fail "expected exit 0, got $RC"
   [ -z "$OUT" ] || fail "expected no flags, got: $OUT"
   case $RERR in
-    *"levels config not found"*) ;;
-    *) fail "expected a 'levels config not found' warning, got: $RERR" ;;
+    *"config.json not found"*) ;;
+    *) fail "expected a 'config.json not found' warning, got: $RERR" ;;
   esac
 }
 
@@ -133,8 +138,8 @@ t_req7_malformed_config_degrades_to_no_flags() {
   [ "$RC" -eq 0 ] || fail "expected exit 0, got $RC"
   [ -z "$OUT" ] || fail "expected no flags, got: $OUT"
   case $RERR in
-    *"levels config invalid"*) ;;
-    *) fail "expected a 'levels config invalid' warning, got: $RERR" ;;
+    *"config.json invalid"*) ;;
+    *) fail "expected a 'config.json invalid' warning, got: $RERR" ;;
   esac
 }
 
@@ -193,6 +198,34 @@ t_req11_shellcheck_and_bash_n_clean() {
   shellcheck "$COMMON" "$SPAWN" || fail "shellcheck reported findings"
 }
 
+# [REQ-12] generic guarantee: config.json is a generic root-level file —
+# unknown sibling top-level keys must be ignored by level resolution.
+t_req12_unknown_sibling_top_level_keys_are_ignored() {
+  jq_ok || return 0
+  cat > "$SCRATCH/generic.json" <<'JSON'
+{
+  "notifications": { "channel": "telegram", "quietHours": [22, 7] },
+  "taskLevels": {
+    "default": "standard",
+    "levels": {
+      "easy":     { "model": "mimo/free", "thinking": "medium" },
+      "standard": { "model": "mimo/free", "thinking": "xhigh" }
+    }
+  },
+  "featureFlags": { "newStream": true }
+}
+JSON
+  resolve "" "" "" SUB_LEVELS_CONFIG="$SCRATCH/generic.json"
+  [ "$RC" -eq 0 ] || fail "expected exit 0, got $RC"
+  [ -z "$RERR" ] || fail "expected no warning, got: $RERR"
+  [ "$OUT" = "--model mimo/free --thinking xhigh" ] \
+    || fail "unknown sibling keys must be ignored, got: $OUT"
+  resolve "" "" "" SUB_LEVELS_CONFIG="$SCRATCH/generic.json" SUB_LEVEL=standard
+  [ -z "$RERR" ] || fail "expected no warning for a named level, got: $RERR"
+  [ "$OUT" = "--model mimo/free --thinking xhigh" ] \
+    || fail "named level must resolve past sibling keys, got: $OUT"
+}
+
 run() {
   local name=$1 fn=$2 out
   if out=$( "$fn" 2>&1 ); then
@@ -214,6 +247,7 @@ run "[REQ-8]  child settings inherit thinking/trust baseline"      t_req8_child_
 run "[REQ-9]  launch line carries options ahead of the kickoff"    t_req9_launch_line_carries_options_ahead_of_kickoff
 run "[REQ-10] bad spawn invocations die before any work"           t_req10_bad_spawn_invocations_die_early
 run "[REQ-11] touched scripts shellcheck-clean"                    t_req11_shellcheck_and_bash_n_clean
+run "[REQ-12] unknown sibling top-level keys are ignored"      t_req12_unknown_sibling_top_level_keys_are_ignored
 
 if [ "$failures" -gt 0 ]; then
   printf '\n%d test(s) failed\n' "$failures"

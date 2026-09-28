@@ -61,7 +61,8 @@ set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
 need git tmux treehouse jq realpath
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then usage; fi
 # Model/thinking for this child: --level/--model/--thinking > SUB_* env >
-# config/task-levels.json (warns + resolves to nothing on any config problem).
+# the taskLevels section of config.json (warns + resolves to nothing on any
+# config problem).
 CHILD_LAUNCH_FLAGS=$(resolve_child_launch_flags "$LEVEL_ARG" "$MODEL_ARG" "$THINKING_ARG")
 
 TASK=$1

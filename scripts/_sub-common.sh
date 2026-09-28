@@ -14,7 +14,8 @@ _SUB_MAIN_SESSION_WAS_SET=${MAIN_SESSION+x}
 : "${SCRATCH_DIR:=tmp/pi-sub}"      # gitignored scratch dir in the main checkout
 
 # This script's own directory: anchors repo-local defaults (the child
-# difficulty levels live in config/task-levels.json, next to this scripts/ dir).
+# difficulty levels live in config.json at the repo root, next to this
+# scripts/ dir).
 # Pure parameter expansion — no external dirname at source time: this file
 # must stay sourceable with a restricted PATH (tests/sub-common.test.sh) and
 # under set -e.
@@ -103,16 +104,20 @@ report_file()  { printf '%s/%s/reports/%s.md'  "$1" "$SCRATCH_DIR" "$2"; }
 patch_file()   { printf '%s/%s/reports/%s.patch' "$1" "$SCRATCH_DIR" "$2"; }
 
 # The child difficulty-levels config (AGENTS.md, "Child model and thinking
-# levels"): config/task-levels.json next to this scripts/ directory.
+# levels"): config.json at the repository root — a generic root-level file
+# whose taskLevels section holds the levels; sibling top-level keys are
+# future general settings and must stay invisible to level resolution.
 # SUB_LEVELS_CONFIG relocates the file.
 levels_config() {
-  printf '%s' "${SUB_LEVELS_CONFIG:-$_SUB_COMMON_DIR/../config/task-levels.json}"
+  printf '%s' "${SUB_LEVELS_CONFIG:-$_SUB_COMMON_DIR/../config.json}"
 }
 
 # Echo the quoted --model/--thinking option words for a child pi launch
 # (possibly empty). Precedence: explicit flag > SUB_MODEL/SUB_THINKING env >
-# the selected level's mapping in the levels config; the level itself is:
-# explicit flag > SUB_LEVEL env > config "default". Always exits 0 — a
+# the selected level's mapping in the config's taskLevels section; the level
+# itself is: explicit flag > SUB_LEVEL env > .taskLevels.default. All jq
+# queries are rooted at .taskLevels, so unknown sibling top-level keys in
+# config.json are ignored by construction. Always exits 0 — a
 # missing/malformed config or an unknown level warns on stderr and degrades
 # to no flags, so the child inherits defaultThinkingLevel/modelThinkingLevels
 # from the global settings instead of spawning ever failing.
@@ -124,16 +129,16 @@ resolve_child_launch_flags() { # $1=level $2=model $3=thinking
   if [ -z "$model" ] || [ -z "$thinking" ]; then
     cfg=$(levels_config)
     if [ ! -f "$cfg" ]; then
-      warn "levels config not found: $cfg — child inherits model/thinking from settings"
-    elif ! jq -e '(.levels | type) == "object"' "$cfg" >/dev/null 2>&1; then
-      warn "levels config invalid: $cfg — child inherits model/thinking from settings"
+      warn "config.json not found: $cfg — child inherits model/thinking from settings"
+    elif ! jq -e '(.taskLevels.levels | type) == "object"' "$cfg" >/dev/null 2>&1; then
+      warn "config.json invalid: $cfg — child inherits model/thinking from settings"
     else
-      [ -n "$level" ] || level=$(jq -r '.default // empty' "$cfg" 2>/dev/null || true)
+      [ -n "$level" ] || level=$(jq -r '.taskLevels.default // empty' "$cfg" 2>/dev/null || true)
       if [ -z "$level" ]; then
-        warn "levels config has no default level: $cfg — child inherits model/thinking from settings"
-      elif jq -e --arg l "$level" '.levels | has($l)' "$cfg" >/dev/null 2>&1; then
-        [ -n "$model" ] || model=$(jq -r --arg l "$level" '.levels[$l].model // empty' "$cfg" 2>/dev/null || true)
-        [ -n "$thinking" ] || thinking=$(jq -r --arg l "$level" '.levels[$l].thinking // empty' "$cfg" 2>/dev/null || true)
+        warn "config.json has no default level: $cfg — child inherits model/thinking from settings"
+      elif jq -e --arg l "$level" '.taskLevels.levels | has($l)' "$cfg" >/dev/null 2>&1; then
+        [ -n "$model" ] || model=$(jq -r --arg l "$level" '.taskLevels.levels[$l].model // empty' "$cfg" 2>/dev/null || true)
+        [ -n "$thinking" ] || thinking=$(jq -r --arg l "$level" '.taskLevels.levels[$l].thinking // empty' "$cfg" 2>/dev/null || true)
       else
         warn "unknown level '$level' in $cfg — child inherits model/thinking from settings"
       fi

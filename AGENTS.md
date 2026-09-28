@@ -329,8 +329,12 @@ automates link delivery and the background feedback poll.
 ### Child model and thinking levels
 
 The difficulty of the task decides the child's model and thinking level.
-The three levels live in `config/task-levels.json` (local to this repo — edit
-it to retune; these are the initial values):
+The levels live in `config.json` at the repository root — a generic,
+root-level config file that is ready for future general settings: the
+levels are namespaced under its `taskLevels` top-level section, and sibling
+top-level keys hold any future setting without touching the level
+resolution code (unknown keys are ignored). Edit it to retune; these are
+the initial values:
 
 | Level | When to use | Model | Thinking |
 |---|---|---|---|
@@ -347,7 +351,7 @@ Pick the level when writing the brief and pass it at spawn:
 `--model <pattern>` / `--thinking <level>` override the level's mapping in
 whole or in part (env equivalents `SUB_LEVEL`, `SUB_MODEL`, `SUB_THINKING`;
 `SUB_LEVELS_CONFIG` relocates the config file). Without any override the
-config's `default` level applies; when the config cannot be read the child
+`taskLevels.default` level applies; when the config cannot be read the child
 inherits `defaultThinkingLevel` / `modelThinkingLevels` / `defaultProjectTrust`
 from the global pi settings instead — no config problem can break a spawn.
 Spec: `specs/child-task-levels/`, tests: `tests/task-levels.test.sh`.
