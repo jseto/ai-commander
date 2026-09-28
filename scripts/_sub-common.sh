@@ -112,6 +112,33 @@ levels_config() {
   printf '%s' "${SUB_LEVELS_CONFIG:-$_SUB_COMMON_DIR/../config.json}"
 }
 
+# Echo the fallback model configured for a stuck child (AGENTS.md, "Child
+# model and thinking levels"): the env override SUB_FALLBACK_MODEL, else
+# .taskLevels.fallbackModel in the levels config. Empty when no fallback is
+# configured — a missing, unreadable, or malformed config means "no
+# fallback", never an error, so no caller breaks on a config problem.
+resolve_fallback_model() {
+  if [ -n "${SUB_FALLBACK_MODEL:-}" ]; then printf '%s' "$SUB_FALLBACK_MODEL"; return 0; fi
+  _fallback_config_value fallbackModel
+}
+
+# Echo the thinking level to apply with the fallback model (env override
+# SUB_FALLBACK_THINKING, else .taskLevels.fallbackThinking); empty means
+# "leave pi's level as-is". Same graceful degradation as resolve_fallback_model.
+resolve_fallback_thinking() {
+  if [ -n "${SUB_FALLBACK_THINKING:-}" ]; then printf '%s' "$SUB_FALLBACK_THINKING"; return 0; fi
+  _fallback_config_value fallbackThinking
+}
+
+# Echo one string key from the taskLevels section, or nothing.
+_fallback_config_value() { # $1=key
+  local cfg
+  cfg=$(levels_config)
+  [ -f "$cfg" ] || return 0
+  jq -r --arg k "$1" '.taskLevels[$k] // empty' "$cfg" 2>/dev/null || true
+  return 0
+}
+
 # Echo the quoted --model/--thinking option words for a child pi launch
 # (possibly empty). Precedence: explicit flag > SUB_MODEL/SUB_THINKING env >
 # the selected level's mapping in the config's taskLevels section; the level
@@ -300,5 +327,52 @@ pane_tail() { # $1=task $2=lines
             for (i=start; i<=last; i++) print line[i] }'
   else
     info "(tmux session $sess is not running)"
+  fi
+}
+
+# Signature of pi's free-provider usage-limit failure in a pane: the JSON
+# error type, or an HTTP 429 next to rate-limit wording. Deliberately textual
+# (there is no other channel into a running TUI), so callers scan a bounded
+# pane window instead of the whole scrollback.
+_FALLBACK_ERROR_RE='FreeUsageLimitError|(^|[^0-9])429([^0-9]|$).*([Rr]ate[ -]?limit|[Tt]oo [Mm]any [Rr]equests)'
+
+# Echo the last non-empty line currently shown in the task's pane — pi draws
+# its status bar (path, token stats, model • thinking) there. Nothing when
+# the session is not running.
+pane_last_line() { # $1=task
+  local sess
+  sess=$(session_of "$1")
+  tmux has-session -t "$sess" 2>/dev/null || return 0
+  tmux capture-pane -t "$sess" -p 2>/dev/null \
+    | awk 'NF { last=$0 } END { if (last != "") print last }'
+}
+
+# True when the task's pane tail shows the free-limit error.
+pane_has_free_limit_error() { # $1=task [$2=scan lines]
+  local task=$1 lines=${2:-50}
+  pane_tail "$task" "$lines" | grep -qE -- "$_FALLBACK_ERROR_RE"
+}
+
+# True when the task's status bar shows the model. pi renders the model id
+# (the part after the final "/") there, not the provider-qualified name.
+pane_shows_model() { # $1=task $2=model
+  local task=$1 model=$2 last id
+  id=${model##*/}
+  [ -n "$id" ] || return 1
+  last=$(pane_last_line "$task")
+  [ -n "$last" ] || return 1
+  grep -qF -- "$id" <<<"$last"
+}
+
+# True when the task's status bar shows the thinking level. pi renders it
+# after a bullet ("model • max"); "off" renders as "model • thinking off".
+pane_shows_thinking() { # $1=task $2=level
+  local last
+  last=$(pane_last_line "$1")
+  [ -n "$last" ] || return 1
+  if [ "$2" = off ]; then
+    grep -qF -- '• thinking off' <<<"$last"
+  else
+    grep -qF -- "• $2" <<<"$last"
   fi
 }

@@ -1,6 +1,8 @@
 {
   "taskLevels": {
     "default": "standard",
+    "fallbackModel": "opencode-go/deepseek-v4.1-flash",
+    "fallbackThinking": "max",
     "levels": {
       "easy": {
         "description": "Chores, trims, config and docs edits, small fixes.",
