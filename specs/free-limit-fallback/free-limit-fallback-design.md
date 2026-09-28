@@ -24,8 +24,11 @@ This change makes the recovery configurable and mechanical:
    is already on the fallback model, and when no fallback is configured (the
    latter fails only if an actual error is present and cannot be recovered).
 
-Shipped values: `fallbackModel = "opencode-go/deepseek-v4.1-flash"`,
-`fallbackThinking = "max"`.
+Shipped values (config.json is the **single source of truth** for them):
+`fallbackModel = "opencode-go/mimo-v2.6-flash"`, `fallbackThinking = "high"`
+— a level that model accepts. Per the user directive (2026-09-29), AGENTS.md
+names no fallback value at all; it only points at the
+`taskLevels.fallbackModel` / `taskLevels.fallbackThinking` entries.
 
 ## Stated / deduced / assumed
 
@@ -34,6 +37,14 @@ Shipped values: `fallbackModel = "opencode-go/deepseek-v4.1-flash"`,
   verified send; must confirm the switch in the status bar; no-op with a clear
   message without an error; never switch speculatively; graceful degradation
   when the config entry is absent: specs + TDD + shellcheck; AGENTS.md update.
+  Follow-up (live test of 2026-09-29, task brief fix-fallback-model-switch):
+  the already-on guard must match the status-bar model id **with a boundary**
+  (the free id `…-free` contains the fallback id as a substring, which made
+  `sub-fallback.sh` no-op while the child stayed stuck); `fallbackThinking`
+  must name a level `fallbackModel` accepts, and a rejected level must degrade
+  cleanly (model switch = the recovery, thinking mismatch reported as a config
+  problem — no warn loop, no success claim); AGENTS.md must be **agnostic**
+  about fallback values (user directive): docs point at config.json only.
 - **Deduced** (verified against the installed pi 0.87.1 in scratch tmux panes,
   including a full end-to-end recovery of a really erroring child):
   - `/model <provider/model>` switches a running TUI directly (no picker) and
@@ -43,10 +54,16 @@ Shipped values: `fallbackModel = "opencode-go/deepseek-v4.1-flash"`,
     `low`, `high`, `max`; `xhigh` is rejected with
     `Error: Unknown thinking level "xhigh"`. `--thinking xhigh` on launch is
     *clamped* to `max` instead, and switching to the model clamps the session's
-    current level the same way, so an `xhigh` `standard` child lands on `max`
-    with no `/thinking` needed. `fallbackThinking: "max"` therefore keeps the
-    `hard` level's effective effort; an operator can lower it to `high` in
-    config to contain cost.
+    current level the same way, so an `xhigh` `standard` child lands on the
+    model's clamp with no `/thinking` needed. The shipped pair must stay
+    consistent: `fallbackModel = "opencode-go/mimo-v2.6-flash"` accepts
+    `off, minimal, low, medium, high` — `max` is rejected with
+    `Error: Unknown thinking level "max". Available levels: …` — so
+    `fallbackThinking = "high"` keeps that model's ceiling.
+  - The status bar renders the free model as `mimo-v2.6-flash-free`: an id
+    that **extends** the fallback id `mimo-v2.6-flash` (same alphabet prefix
+    + `-free`), so any fixed-substring match on the id confuses the two —
+    the exact collision the live test hit.
   - Pi's slash-command argument completion can consume the Enter that
     `tmux_send_line` sends: the pane *reacts* (the popup closes) while the
     command stays in the composer, so the shared helper alone cannot prove
@@ -94,6 +111,30 @@ Shipped values: `fallbackModel = "opencode-go/deepseek-v4.1-flash"`,
    retries Enter; sending `/model` with a raw `send-keys` races the TUI (both
    probes in this task dropped the first Enter), which is exactly the failure
    the shared helper exists to prevent.
+7. **Boundary rule for status-bar model matching** — `pane_shows_model`
+   matches the model id as a **delimited token**, never as a substring: the id
+   must be preceded by start-of-line or a character outside the model-id
+   alphabet `[A-Za-z0-9._-]`, and followed by end-of-line or a character
+   outside it (in the real footer the id follows `(provider) ` and is
+   followed by ` • level`). `-` and `.` belong to the alphabet, so
+   `mimo-v2.6-flash` against a bar showing `mimo-v2.6-flash-free` does **not**
+   match (followed by `-`), while the exact id followed by ` •` does. The
+   rule distinguishes a strict prefix id in both directions. Note `grep -w`
+   is not sufficient: its word alphabet excludes `-`/`.`, so it would still
+   match inside `…-free`.
+8. **A rejected thinking level degrades to the model recovery** — pi answers
+   an invalid `/thinking <level>` with `Error: Unknown thinking level …` in
+   the pane (the only channel into the TUI). `confirm_thinking` treats that
+   signature as a third outcome (`return 2`): stop polling/nudging, clear the
+   composer, and warn that `fallbackThinking` does not match `fallbackModel`
+   (a `config.json` problem) — while the already-confirmed `/model` switch
+   stands as the recovery, so the helper still exits 0. It never reports the
+   level as set and never fail-loops a command the TUI rejected.
+9. **AGENTS.md stays value-agnostic** (user directive, 2026-09-29) — the docs
+   never name a fallback model or level (no JSON value snippet, no
+   "`max` is the top level …" reasoning); they point at the
+   `taskLevels.fallbackModel` / `taskLevels.fallbackThinking` entries in
+   `config.json` as the single source of truth. [REQ-16] pins this.
 
 ## Entities
 
@@ -108,19 +149,25 @@ Shipped values: `fallbackModel = "opencode-go/deepseek-v4.1-flash"`,
   - `pane_has_free_limit_error <task> [lines]` — pane-tail match against
     `FreeUsageLimitError` or a 429 with rate-limit wording;
   - `pane_shows_model <task> <model>` — status-bar match on the model id
-    (pi renders the part after the final `/`);
+    (pi renders the part after the final `/`), as a delimited token per
+    decision 7 (a strict prefix id does not collide);
   - `pane_shows_thinking <task> <level>` — status-bar match on the level after
-    pi's `•` bullet (`off` renders as `• thinking off`).
-- **`scripts/sub-fallback.sh`** (new) — the recovery flow above, with
-  `confirm_model`/`confirm_thinking` (poll + Enter nudge) and
-  `clear_composer`; exits 0 on no-op/success, dies loudly when an error is
-  present but unrecoverable.
+    pi's `•` bullet (`off` renders as `• thinking off`);
+  - `pane_thinking_level_rejected <task> [lines]` — pane-tail match on
+    `Error: Unknown thinking level`, pi's answer to a `fallbackThinking` the
+    model in effect does not accept (decision 8).
+- **`scripts/sub-fallback.sh`** (recovery flow above, with
+  `confirm_model`/`confirm_thinking` (poll + Enter nudge; `confirm_thinking`
+  also returns 2 on a pane rejection, decision 8) and
+  `clear_composer`; exits 0 on no-op/success — including the degraded
+  "model switched, thinking rejected" outcome —, dies loudly when the model
+  switch itself cannot be confirmed.
 - **`specs/free-limit-fallback/`** (new) — this design + the feature file.
 - **`tests/free-limit-fallback.test.sh`** (new) — one test per
   `[REQ-1]`…`[REQ-13]` plus a supplementary popup-swallow regression,
   fake-tmux sandbox (no real session touched).
 - **`AGENTS.md`** — "Child model and thinking levels" section documents the
-  fallback entry, the helper, and the operator command.
+  fallback entries and the helper, value-agnostically (decision 9, [REQ-16]).
 
 ## Behaviour and data flow
 
@@ -142,21 +189,23 @@ flowchart TD
     H -- yes --> I["report: already in effect"]
     H -- no --> J["tmux_send_line: /thinking <level>"]
     J -- seen --> K["report thinking set"]
+    J -- "pane: Error: Unknown<br/>thinking level" --> W2["clear composer; warn:<br/>fallbackThinking config mismatch<br/>(model switch = the recovery)"]
     J -- missing --> W["clear composer; warn"]
     I --> Z["report switched (exit 0)"]
     K --> Z
+    W2 --> Z
 ```
 
 ## Proposed changes (files/modules)
 
 | File | Change |
 |---|---|
-| `config.json` | add `taskLevels.fallbackModel` + `taskLevels.fallbackThinking` |
+| `config.json` | `taskLevels.fallbackModel` + `taskLevels.fallbackThinking`, kept consistent with each other |
 | `scripts/_sub-common.sh` | fallback resolvers + pane helpers (last line, error detection, model/thinking probes) |
 | `scripts/sub-fallback.sh` | new helper: detect → verified switch → status-bar confirm (no-op otherwise) |
 | `specs/free-limit-fallback/*` | feature file + this design |
 | `tests/free-limit-fallback.test.sh` | behavioural suite, one test per scenario + popup regression |
-| `AGENTS.md` | document the fallback entry and the recovery command |
+| `AGENTS.md` | document the fallback entry and the recovery command, value-agnostically (point at config.json) |
 | `tests/task-levels.test.sh` | make executable (pre-existing 0644; the rest of `tests/*.sh` is 0755) |
 
 ## Task list
@@ -175,6 +224,11 @@ flowchart TD
 - [x] Full suite (`tests/*.sh`) green, shellcheck clean
 - [x] AGENTS.md section updated
 - [x] Code audit pass (below)
+- [x] Round 2 (fix-fallback-model-switch): specs for [REQ-14]…[REQ-16]
+      written first, then the three regressions RED (prefix-collision no-op,
+      shipped-value drift, stale `fallbackThinking`) → GREEN
+- [x] Full suite green + shellcheck after round 2
+- [x] Code audit pass, round 2 (below)
 
 ## Strengths / Weaknesses
 
@@ -191,12 +245,18 @@ flowchart TD
      a child that is actually stuck; a false positive is reversible with
      another `/model`.
   2. The status-bar probes are fixed-string matches on pi's rendered footer
-     (model id after the final `/`, level after `•`). A relabelled or
-     truncated footer (very long model id) would make confirmation fail even
-     though the switch took effect — the loud failure, not a wrong success.
-  3. `fallbackThinking` is model-specific (`max` for deepseek-v4.1-flash);
-     changing `fallbackModel` without adjusting it makes the thinking step
-     warn (not fail) after clearing the composer.
+     (model id after the final `/` — now as a delimited token per decision 7 —
+     level after `•`). A relabelled or truncated footer (very long model id)
+     would make confirmation fail even though the switch took effect — the
+     loud failure, not a wrong success.
+  3. `fallbackThinking` is model-specific (a level `fallbackModel` accepts);
+     changing `fallbackModel` without adjusting it is now *detected* at
+     runtime: pi's rejection degrades to a config-problem warning while the
+     model switch recovers the child (decision 8). Residual edge: a stale
+     `Error: Unknown thinking level` left in the 50-line pane tail could make
+     a later, legitimate `/thinking` send read as rejected — the outcome is a
+     conservative warn instead of a claim, and any subsequent run re-checks
+     the status bar first.
   4. The Enter nudge and the `C-u` cleanup assume pi's default editor
      keybindings (`enter` submits, `ctrl+u` deletes to line start); a
      rebinding in the child's keybindings.json would weaken the nudge (the
@@ -243,5 +303,51 @@ rationale above.
   3. The probe timeout/delay are env-tunable (`FALLBACK_PROBE_*`,
      `FALLBACK_SEND_ATTEMPTS`) but undocumented in AGENTS.md; they are test
      hooks first, tuning knobs second.
+- **Recommendation strength**: Speculative for all three; audit verdict — no
+  architectural friction detected, ship it.
+
+## Code audit, round 2 (fix-fallback-model-switch, post-implementation)
+
+Independent pass per the `code-auditor` skill: the feature file and the
+changed sources (`scripts/_sub-common.sh`, `scripts/sub-fallback.sh`,
+`config.json`, `AGENTS.md`) were read from disk, ignoring the conversational
+rationale above.
+
+- **Overview**: round 2 kept the seam deep. `sub-fallback.sh` still takes one
+  positional argument; the externally visible outcomes grew from four to five
+  (no-op / already-on / switched / switched+thinking-rejected-warn / loud
+  failure), and the caller still learns them through one `case $t_rc` fork
+  over a documented tri-state `confirm_thinking` (0 set, 2 rejected, 1
+  unconfirmed) — no pane internals leaked to the caller. The boundary rule
+  (decision 7) landed entirely inside `pane_shows_model`, so every caller —
+  the already-on guard *and* `confirm_model` — got the fix for free; the new
+  `pane_thinking_level_rejected` + `_FALLBACK_THINKING_ERROR_RE` mirror the
+  existing `pane_has_free_limit_error` + `_FALLBACK_ERROR_RE` shape, so the
+  probe vocabulary stayed uniform. The [REQ-n] chain stayed 1:1 with the
+  tests (17 scenarios ↔ 17 test cases, [REQ-14]…[REQ-16] added at both ends
+  of the chain).
+- **Files**: `scripts/_sub-common.sh` (`pane_shows_model`,
+  `pane_thinking_level_rejected`), `scripts/sub-fallback.sh`
+  (`confirm_thinking`, the thinking-outcome block), `config.json`,
+  `AGENTS.md`, plus specs/tests.
+- **Problem / Solution / Benefits**: no friction found — the two bug fixes
+  are behaviour corrections inside existing seams, not new structure; the
+  deletion test still holds (removing the helpers would push token matching
+  and rejection triage back into each caller).
+- **Less valuable improvements** (noted, deliberately not done):
+  1. `confirm_model`/`confirm_thinking` remain near-duplicates;
+     `confirm_thinking` now carries the extra rejection probe, widening the
+     gap. A parameterised `confirm <probe> <extra-probe> <value>` would merge
+     them at the cost of an indirect call in shell — *worth exploring* only
+     if a third confirmed switch appears.
+  2. `pane_shows_thinking` is still a fixed `• <level>` substring match with
+     no delimiter rule. No pair in pi's current level set collides (no level
+     is a strict prefix of another, and `• high` is not a substring of
+     `• xhigh`), so the model-id fix was not generalized speculatively;
+     apply the same token rule if pi ever gains a colliding level.
+  3. The rejection signature is scanned in the same fixed 50-line tail as the
+     free-limit error; a stale `Error: Unknown thinking level` line can only
+     cause a conservative warn (never a false success) — recorded under
+     weaknesses 3 instead of adding tail-since-send bookkeeping.
 - **Recommendation strength**: Speculative for all three; audit verdict — no
   architectural friction detected, ship it.

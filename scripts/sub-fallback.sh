@@ -5,8 +5,15 @@
 # confirm the switch in the child's status bar.
 #
 # Never speculative: the child's pane must already show the free-limit error,
-# and the child must not already be on the fallback model. No error (or no
-# configured fallback) means no switch is sent.
+# and the child must not already be on the fallback model — the status-bar
+# probe matches the model id as a delimited token, so an id that merely
+# extends it (the free "…-free" variant of the fallback id) is not "already
+# on". No error (or no configured fallback) means no switch is sent.
+#
+# The model switch is the recovery. A fallbackThinking the model does not
+# accept is pi's 'Error: Unknown thinking level' answer: it degrades to a
+# config-problem warning (exit 0) instead of failing the recovered child or
+# loop-nudging a command the TUI will never take.
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -74,6 +81,11 @@ confirm_model() {
   return 1
 }
 
+# Returns 0 once the level shows in the status bar, 2 when pi rejected it
+# (Error: Unknown thinking level — a fallbackThinking that does not match the
+# model now in effect, i.e. a config.json problem, not a delivery problem:
+# stop instead of nudging a command the TUI will never accept), 1 when it
+# could not be confirmed at all.
 confirm_thinking() {
   local attempt i
   for (( attempt = 0; attempt <= FALLBACK_SEND_ATTEMPTS; attempt++ )); do
@@ -83,6 +95,7 @@ confirm_thinking() {
     fi
     for (( i = 0; i < FALLBACK_PROBE_ATTEMPTS; i++ )); do
       pane_shows_thinking "$TASK" "$THINKING" && return 0
+      pane_thinking_level_rejected "$TASK" "$FALLBACK_SCAN_LINES" && return 2
       sleep "$FALLBACK_PROBE_DELAY"
     done
   done
@@ -105,17 +118,31 @@ fi
 
 # Thinking comes after the model switch: pi clamps the session's current level
 # to the new model's range on /model, so if the clamp already lands on the
-# configured level there is nothing to send (the normal case: an xhigh child
-# switching to a model whose top level is max). Otherwise apply it, still
+# configured level there is nothing to send. Otherwise apply it, still
 # confirming against the status bar. This is a refinement, not the recovery —
-# an unconfirmed thinking send warns instead of failing a recovered child.
+# a thinking problem never fails a recovered child: a level pi rejects
+# (confirm_thinking returns 2) is reported as the config problem it is, and
+# any other unconfirmed send warns after clearing the composer.
 if [ -n "$THINKING" ]; then
   if pane_shows_thinking "$TASK" "$THINKING"; then
     info "thinking level already $THINKING — nothing to change"
-  elif tmux_send_line "$SESS" "/thinking $THINKING" && confirm_thinking; then
-    info "thinking level set to $THINKING"
   else
-    clear_composer
-    warn "could not confirm /thinking $THINKING in $SESS — check the pane"
+    t_rc=0
+    if tmux_send_line "$SESS" "/thinking $THINKING"; then
+      confirm_thinking || t_rc=$?
+    else
+      t_rc=1
+    fi
+    case $t_rc in
+      0) info "thinking level set to $THINKING" ;;
+      2)
+        clear_composer
+        warn "$SESS rejected thinking level '$THINKING' (pi: $_FALLBACK_THINKING_ERROR_RE) — fallbackThinking in $(levels_config) does not match fallbackModel $MODEL; the model switch alone recovered the child"
+        ;;
+      *)
+        clear_composer
+        warn "could not confirm /thinking $THINKING in $SESS — check the pane"
+        ;;
+    esac
   fi
 fi

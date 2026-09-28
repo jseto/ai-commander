@@ -67,6 +67,9 @@ setup() {
 #   no-apply   literal text lands; Enter submits but never updates the footer
 #   drop-enter literal text lands; Enter is swallowed
 #   drop-text  literal text never lands
+#   reject-thinking  Enter applies the pending /model but answers a pending
+#              /thinking with pi's validation error (Error: Unknown thinking
+#              level …) instead of changing the level; C-u does nothing
 set -u
 S=${FAKE_TMUX_DIR:?FAKE_TMUX_DIR not set}
 mkdir -p "$S"
@@ -103,8 +106,8 @@ apply_pending() {
     cp "$S/pending-model" "$S/current-model"
     rm -f "$S/pending-model"
     # Pi clamps the session's thinking level to the new model's range on
-    # /model; FAKE_TMUX_LEVEL_AFTER_MODEL models that (default max, like a
-    # deepseek-v4.1-flash switch from xhigh).
+    # /model; FAKE_TMUX_LEVEL_AFTER_MODEL models that (default max — an xhigh
+    # child landing on a model whose ceiling is max).
     if [ -n "${FAKE_TMUX_LEVEL_AFTER_MODEL:-}" ]; then
       printf '%s' "$FAKE_TMUX_LEVEL_AFTER_MODEL" > "$S/current-level"
     fi
@@ -163,6 +166,25 @@ case "${1:-}" in
         no-apply)   printf '\n<<submitted>>\n' >> "$S/pane" ;;
         drop-enter) printf '\n' >> "$S/pane" ;;
         drop-text)  : ;;
+        reject-thinking)
+          # Only Enter changes anything; C-u (composer cleanup) is a no-op.
+          if [ "$text" = Enter ]; then
+            printf '\n<<submitted>>\n' >> "$S/pane"
+            if [ -s "$S/pending-model" ]; then
+              cp "$S/pending-model" "$S/current-model"
+              rm -f "$S/pending-model"
+              if [ -n "${FAKE_TMUX_LEVEL_AFTER_MODEL:-}" ]; then
+                printf '%s' "$FAKE_TMUX_LEVEL_AFTER_MODEL" > "$S/current-level"
+              fi
+            fi
+            if [ -s "$S/pending-thinking" ]; then
+              lvl=$(cat "$S/pending-thinking")
+              rm -f "$S/pending-thinking"
+              printf 'Error: Unknown thinking level "%s". Available levels: off, minimal, low, medium, high.\n' "$lvl" >> "$S/pane"
+            fi
+            rewrite_footer
+          fi
+          ;;
       esac
     fi
     ;;
@@ -180,6 +202,11 @@ EOS
 
   : > "$FAKE_TMUX_DIR/sessions"
   : > "$FAKE_TMUX_DIR/pane"
+  # Default status bar: the free model whose id extends the shipped fallback id.
+  {
+    printf '%s\n' '/home/tester/repo (task/demo)'
+    printf '%s\n' '0.0%/200k (auto)          (opencode-zen-free) mimo-v2.6-flash-free • xhigh'
+  } > "$FAKE_TMUX_DIR/footer"
   export FAKE_TMUX_MODE=ok
   # Pin the config and timing so no ambient environment leaks into the sandbox.
   export SUB_LEVELS_CONFIG="$ROOT/config.json"
@@ -215,6 +242,7 @@ expect_rc_nonzero() { [ "$FB_RC" -ne 0 ] || fail "expected non-zero exit: out=$F
 expect_out()        { printf '%s' "$FB_OUT" | grep -q -- "$1" || fail "stdout lacks '$1': $FB_OUT"; }
 expect_not_out()    { ! printf '%s' "$FB_OUT" | grep -q -- "$1" || fail "stdout must not contain '$1': $FB_OUT"; }
 expect_err()        { printf '%s' "$FB_ERR" | grep -q -- "$1" || fail "stderr lacks '$1': $FB_ERR"; }
+expect_not_err()    { ! printf '%s' "$FB_ERR" | grep -q -- "$1" || fail "stderr must not contain '$1': $FB_ERR"; }
 
 # ---------------------------------------------------------------------------
 # Scenarios — one test per [REQ-n]
@@ -225,11 +253,11 @@ t_req1_shipped_config_resolves_fallback() {
   resolve_fallback resolve_fallback_model
   [ "$RC" -eq 0 ] || fail "model resolver exit $RC: $RERR"
   [ -z "$RERR" ] || fail "expected no warnings, got: $RERR"
-  [ "$OUT" = "opencode-go/deepseek-v4.1-flash" ] || fail "unexpected model: $OUT"
+  [ "$OUT" = "opencode-go/mimo-v2.6-flash" ] || fail "unexpected model: $OUT"
   resolve_fallback resolve_fallback_thinking
   [ "$RC" -eq 0 ] || fail "thinking resolver exit $RC: $RERR"
   [ -z "$RERR" ] || fail "expected no warnings, got: $RERR"
-  [ "$OUT" = "max" ] || fail "unexpected thinking: $OUT"
+  [ "$OUT" = "high" ] || fail "unexpected thinking: $OUT"
 }
 
 t_req2_env_overrides_win() {
@@ -296,10 +324,12 @@ t_req6_detected_error_switches_to_fallback() {
   seed_error
   run_fallback "$TASK"
   expect_rc0
-  grep -q -- '-l /model opencode-go/deepseek-v4.1-flash' "$FAKE_TMUX_DIR/log" \
+  grep -q -- '-l /model opencode-go/mimo-v2.6-flash' "$FAKE_TMUX_DIR/log" \
     || fail "the model switch was not sent: $(cat "$FAKE_TMUX_DIR/log")"
-  grep -qi "deepseek-v4.1-flash" "$FAKE_TMUX_DIR/footer" \
-    || fail "the fake footer never showed the switched model"
+  # The footer starts on the free model whose id extends the fallback id:
+  # assert the switched id as a delimited token, not a substring.
+  grep -qF -- '(opencode-go) mimo-v2.6-flash' "$FAKE_TMUX_DIR/footer" \
+    || fail "the fake footer never showed the switched model: $(cat "$FAKE_TMUX_DIR/footer")"
   expect_out "switched"
 }
 
@@ -311,26 +341,26 @@ t_req7_thinking_level_in_effect_after_recovery() {
   setup
   add_session "$SESS"
   seed_error
+  export FAKE_TMUX_LEVEL_AFTER_MODEL=high
   run_fallback "$TASK"
   expect_rc0
   if grep -q -- '-l /thinking' "$FAKE_TMUX_DIR/log"; then
     fail "an already-effective level must not be re-sent: $(cat "$FAKE_TMUX_DIR/log")"
   fi
-  grep -qF -- '• max' "$FAKE_TMUX_DIR/footer" \
+  grep -qF -- '• high' "$FAKE_TMUX_DIR/footer" \
     || fail "the status bar does not show the configured level: $(cat "$FAKE_TMUX_DIR/footer")"
-  expect_out "already max"
+  expect_out "already high"
 
   setup
   add_session "$SESS"
   seed_error
-  export FAKE_TMUX_LEVEL_AFTER_MODEL=high
   run_fallback "$TASK"
   expect_rc0
-  grep -q -- '-l /thinking max' "$FAKE_TMUX_DIR/log" \
+  grep -q -- '-l /thinking high' "$FAKE_TMUX_DIR/log" \
     || fail "the thinking level was not sent: $(cat "$FAKE_TMUX_DIR/log")"
-  grep -qF -- '• max' "$FAKE_TMUX_DIR/footer" \
+  grep -qF -- '• high' "$FAKE_TMUX_DIR/footer" \
     || fail "the status bar does not show the applied level: $(cat "$FAKE_TMUX_DIR/footer")"
-  expect_out "thinking level set to max"
+  expect_out "thinking level set to high"
 }
 
 # Supplementary (no [REQ-n]): a completion popup can swallow the first Enter,
@@ -344,10 +374,10 @@ t_supp_popup_swallowed_enter_is_recovered() {
   export FAKE_TMUX_MODE=popup
   run_fallback "$TASK"
   expect_rc0
-  grep -Fq -- "-l /model opencode-go/deepseek-v4.1-flash" "$FAKE_TMUX_DIR/log" \
+  grep -Fq -- "-l /model opencode-go/mimo-v2.6-flash" "$FAKE_TMUX_DIR/log" \
     || fail "the model switch was not sent: $(cat "$FAKE_TMUX_DIR/log")"
-  grep -qi "deepseek-v4.1-flash" "$FAKE_TMUX_DIR/footer" \
-    || fail "the completion popup swallowed the switch without a nudge"
+  grep -qF -- '(opencode-go) mimo-v2.6-flash' "$FAKE_TMUX_DIR/footer" \
+    || fail "the completion popup swallowed the switch without a nudge: $(cat "$FAKE_TMUX_DIR/footer")"
   expect_out "switched"
 }
 
@@ -361,7 +391,7 @@ t_req8_unconfirmed_switch_fails_loudly() {
   expect_rc_nonzero
   expect_err "ERROR:"
   expect_err "$SESS"
-  expect_err "deepseek-v4.1-flash"
+  expect_err "mimo-v2.6-flash"
   expect_not_out "switched"
   grep -q -- ' C-u' "$FAKE_TMUX_DIR/log" \
     || fail "the composer must be cleared when the switch cannot be confirmed"
@@ -391,12 +421,70 @@ t_req10_already_on_fallback_is_a_noop() {
   seed_error
   {
     printf '%s\n' '/home/tester/repo (task/demo)'
-    printf '%s\n' '0.0%/1.0M (auto)          (opencode-go) deepseek-v4.1-flash • max'
+    printf '%s\n' '0.0%/1.0M (auto)          (opencode-go) mimo-v2.6-flash • high'
   } > "$FAKE_TMUX_DIR/footer"
   run_fallback "$TASK"
   expect_rc0
   [ "$(count_literal)" -eq 0 ] || fail "no keys may be sent when already on fallback: $(cat "$FAKE_TMUX_DIR/log")"
   expect_out "already on fallback"
+}
+
+# [REQ-14] regression for the 2026-09-29 live test: the free model id
+# (mimo-v2.6-flash-free) *contains* the configured fallback id
+# (mimo-v2.6-flash) as a prefix. A fixed-substring guard read the status bar
+# as "already on fallback" and the fallback silently no-op'd while the child
+# stayed stuck on the limited model. The boundary rule must send the switch.
+t_req14_prefix_collision_is_not_already_on() {
+  jq_ok || return 0
+  setup
+  add_session "$SESS"
+  seed_error
+  # The sandbox footer starts on (opencode-zen-free) mimo-v2.6-flash-free • xhigh.
+  grep -qF -- 'mimo-v2.6-flash-free' "$FAKE_TMUX_DIR/footer" \
+    || fail "fixture must start on the free model"
+  run_fallback "$TASK"
+  expect_rc0
+  grep -q -- '-l /model opencode-go/mimo-v2.6-flash' "$FAKE_TMUX_DIR/log" \
+    || fail "the prefix id was mistaken for the fallback model: $(cat "$FAKE_TMUX_DIR/log")"
+  grep -qF -- '(opencode-go) mimo-v2.6-flash' "$FAKE_TMUX_DIR/footer" \
+    || fail "the fake footer never showed the switched model: $(cat "$FAKE_TMUX_DIR/footer")"
+  expect_out "switched"
+  expect_not_out "already on fallback"
+}
+
+# [REQ-15] regression for a stale fallbackThinking: the model switch
+# succeeds but the TUI rejects /thinking with Error: Unknown thinking level.
+# The switch alone must count as the recovery: exit 0, no success claim for
+# the level, a config-problem warning, and no Enter-nudge warn loop.
+t_req15_rejected_thinking_degrades_to_model_recovery() {
+  jq_ok || return 0
+  setup
+  add_session "$SESS"
+  seed_error
+  export FAKE_TMUX_MODE=reject-thinking
+  export FAKE_TMUX_LEVEL_AFTER_MODEL=high
+  # A fallbackThinking the model does not accept (env override stands in for
+  # a config.json where fallbackModel changed and the level was not retuned).
+  export SUB_FALLBACK_THINKING=max
+  run_fallback "$TASK"
+  expect_rc0
+  grep -q -- '-l /model opencode-go/mimo-v2.6-flash' "$FAKE_TMUX_DIR/log" \
+    || fail "the model switch was not sent: $(cat "$FAKE_TMUX_DIR/log")"
+  grep -q -- '-l /thinking max' "$FAKE_TMUX_DIR/log" \
+    || fail "the configured level was never attempted: $(cat "$FAKE_TMUX_DIR/log")"
+  expect_out "switched"
+  expect_not_out "thinking level set"
+  expect_err "Unknown thinking level"
+  expect_err "fallbackThinking"
+  expect_not_err "ERROR:"
+  # No warn loop: at most the two verified sends (model + thinking) may have
+  # pressed Enter; a rejected command must not be nudged again.
+  [ "$(count_enter)" -le 2 ] \
+    || fail "the rejected /thinking was nudged in a loop: $(cat "$FAKE_TMUX_DIR/log")"
+  grep -q -- ' C-u' "$FAKE_TMUX_DIR/log" \
+    || fail "the composer must be cleared after the rejection"
+  grep -qF -- '(opencode-go) mimo-v2.6-flash • high' "$FAKE_TMUX_DIR/footer" \
+    || fail "the child must end on the switched model: $(cat "$FAKE_TMUX_DIR/footer")"
 }
 
 t_req11_missing_session_dies() {
@@ -412,6 +500,19 @@ t_req12_agents_md_documents_fallback() {
     || fail "AGENTS.md does not document the fallbackModel entry"
   grep -q "sub-fallback.sh" "$ROOT/AGENTS.md" \
     || fail "AGENTS.md does not document the sub-fallback.sh recovery command"
+}
+
+# [REQ-16] config.json is the single source of truth for fallback values:
+# AGENTS.md may point at the entries but must pin no value for either.
+t_req16_agents_md_names_no_fallback_values() {
+  ! grep -q '"fallbackModel": "' "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md pins a fallbackModel value — config.json owns it"
+  ! grep -q '"fallbackThinking": "' "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md pins a fallbackThinking value — config.json owns it"
+  grep -q "taskLevels.fallbackModel" "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md does not point at the config.json taskLevels.fallbackModel entry"
+  grep -q "taskLevels.fallbackThinking" "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md does not point at the config.json taskLevels.fallbackThinking entry"
 }
 
 t_req13_shellcheck_and_bash_n_clean() {
@@ -445,8 +546,11 @@ run "[supp]   completion popup swallowing Enter is recovered" t_supp_popup_swall
 run "[REQ-8]  unconfirmed switch fails loudly"               t_req8_unconfirmed_switch_fails_loudly
 run "[REQ-9]  error without a fallback sends nothing"        t_req9_error_without_fallback_sends_nothing
 run "[REQ-10] already on fallback is a no-op"                t_req10_already_on_fallback_is_a_noop
+run "[REQ-14] prefix-colliding id is not 'already on'"       t_req14_prefix_collision_is_not_already_on
+run "[REQ-15] rejected thinking degrades to the recovery"    t_req15_rejected_thinking_degrades_to_model_recovery
 run "[REQ-11] missing child session dies"                    t_req11_missing_session_dies
 run "[REQ-12] AGENTS.md documents the fallback"              t_req12_agents_md_documents_fallback
+run "[REQ-16] AGENTS.md names no fallback values"            t_req16_agents_md_names_no_fallback_values
 run "[REQ-13] touched scripts shellcheck-clean"              t_req13_shellcheck_and_bash_n_clean
 
 if [ "$failures" -gt 0 ]; then

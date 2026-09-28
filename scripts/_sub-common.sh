@@ -353,15 +353,32 @@ pane_has_free_limit_error() { # $1=task [$2=scan lines]
   pane_tail "$task" "$lines" | grep -qE -- "$_FALLBACK_ERROR_RE"
 }
 
+# True when the task's pane tail shows pi rejecting a thinking level the
+# current model does not support (configured fallbackThinking drift).
+_FALLBACK_THINKING_ERROR_RE='Error: Unknown thinking level'
+
+pane_thinking_level_rejected() { # $1=task [$2=scan lines]
+  local task=$1 lines=${2:-50}
+  pane_tail "$task" "$lines" | grep -qF -- "$_FALLBACK_THINKING_ERROR_RE"
+}
+
 # True when the task's status bar shows the model. pi renders the model id
 # (the part after the final "/") there, not the provider-qualified name.
+# The id must appear as a delimited token — preceded by start-of-line or a
+# character outside the model-id alphabet [A-Za-z0-9._-], and followed by
+# end-of-line or a character outside it (in the footer the id sits between
+# "(provider) " and " • level"). A fixed substring match would read the free
+# variant "mimo-v2.6-flash-free" as "mimo-v2.6-flash" (a strict prefix) and
+# wrongly report the child as already on the fallback model.
 pane_shows_model() { # $1=task $2=model
-  local task=$1 model=$2 last id
+  local task=$1 model=$2 last id re
   id=${model##*/}
   [ -n "$id" ] || return 1
   last=$(pane_last_line "$task")
   [ -n "$last" ] || return 1
-  grep -qF -- "$id" <<<"$last"
+  # Escape everything outside the id alphabet so the id matches literally.
+  re=$(printf '%s' "$id" | sed 's/[^A-Za-z0-9_-]/\\&/g')
+  grep -qE "(^|[^A-Za-z0-9._-])${re}([^A-Za-z0-9._-]|$)" <<<"$last"
 }
 
 # True when the task's status bar shows the thinking level. pi renders it
