@@ -28,7 +28,7 @@ best-effort, post-retirement cleanup step to `sub-retire.sh`, documents it in
   sandboxes a fake `origin` (bare repo), a main checkout, a linked task
   worktree, and stub `treehouse` / `tmux` / `gh` binaries on `PATH`.
   Includes the shellcheck check for `sub-retire.sh`.
-- **GitHub repo setting**: `PATCH repos/jseto/ai-orchestrator
+- **GitHub repo setting**: `PATCH repos/jseto/ai-commander
   -f delete_branch_on_merge=true` (run once; verified with a GET).
 
 `_sub-common.sh`, `sub-land.sh`, `sub-spawn.sh`, `sub-clean.sh` are **not**
