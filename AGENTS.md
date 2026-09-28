@@ -281,7 +281,7 @@ worker**. Its only jobs are: resolve names, transfer the user's queries and
 tasks to the proper child (spawn one when none fits), relay the child's
 answers back verbatim, run the mechanics of the pattern (spawn / publish /
 land / retire, branch cleanup), and talk to you. It must not pick up a task
-— or a question — itself, and it must not reason things out itself; the sole
+— or a question — itself; the sole
 exception is the last row of the routing table below.
 
 **The atomic-specs flow must be done EXCLUSIVELY by the children.** You launch a child with the user's input and delegate to it the FULL flow: from atomic specs (Gherkin/design), TDD implementation (tests passing), to a code audit (code-auditor). The child goes back to you ONLY when it needs the user's input or when it has completed the full task through to opening a PR. Your job is ONLY to manage child task assignments and handle child feedback (whether a question for the user or a finished task report).
@@ -427,12 +427,18 @@ The child session itself pushes its branch (`git push -u origin task/<name>`) an
 Do **not** retire the child yet when the PR is open: the child stays alive until the PR is merged (step 6), so it can address review feedback, rebase against new `development`, or answer questions about the work.
 
 **6. Retire a child** — only once its PR is **merged** (or the user explicitly
-abandons it). Keep the child's tmux session and worktree lease alive between
-step 5 and the merge; retiring earlier strands review follow-ups. Before
-disposing of or retiring any child, check whether its worktree has
-uncommitted, unpublished, or otherwise potentially lost changes. Notify the
-user if any such changes exist, and require the user's confirmation before
-force-discarding them.
+abandons it). **As soon as the PR is merged, retire the child immediately and
+automatically — do not ask the user first** (user directive, 2026-09-26): a
+merged PR ends the child's life cycle, so merge ⇒ retire, every time. Keep the
+child's tmux session and worktree lease alive between step 5 and the merge;
+retiring earlier strands review follow-ups. Before disposing of or retiring
+any child, check whether its worktree has uncommitted, unpublished, or
+otherwise potentially lost changes. Notify the user if any such changes
+exist, and require the user's confirmation before force-discarding them.
+A **squash merge** makes `sub-retire.sh` see the branch as "not merged" even
+though everything is published: verify content is fully in `origin/development`
+with `git diff origin/development..<branch>` (empty diff = nothing lost), then
+retry with `--force`.
 
 **Uncommitted changes are handled by instructing the child, not by force.**
 When a child returns (or is about to be retired) with uncommitted or
@@ -597,6 +603,8 @@ one identifier the whole pattern keys on: it becomes the tmux session
   worktree then. It stays up (tmux session + treehouse lease) so it can handle
   review feedback, rebases, and follow-up instructions; retire it (step 6)
   only after the PR is merged, or once the user explicitly abandons the work.
+  **Once the PR *is* merged, retire the child right away without prompting** —
+  merged ⇒ retired automatically (see step 6).
 - **PR before you return**: `return --force` resets the worktree — always
   push the child's branch and open a PR (step 5) before retiring the child, or
   the local commits are lost. The pushed branch is the durable copy; merging

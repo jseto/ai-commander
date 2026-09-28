@@ -1,4 +1,6 @@
 {
-  "defaultProvider": "opencode-go",
-  "defaultModel": "mimo-v2.6-flash"
+  "defaultProvider": "opencode-zen-free",
+  "defaultModel": "mimo-v2.6-flash-free",
+  "defaultThinkingLevel": "xhigh",
+  "defaultProjectTrust": "always"
 }
