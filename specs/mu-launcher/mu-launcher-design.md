@@ -48,7 +48,7 @@ flowchart LR
 checkout's** `mu` file (repository root, no `.sh` suffix):
 
 ```bash
-ln -s /home/jseto/programming-projects/ai-commander/mu ~/.local/bin/mu
+ln -s /home/jseto/programming-projects/mu-commander/mu ~/.local/bin/mu
 ```
 
 Pointing at the main checkout (not a pooled worktree) is deliberate: `mu` is

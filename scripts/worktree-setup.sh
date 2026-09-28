@@ -117,7 +117,7 @@ fi
 # about, never overwritten.
 SHELLCHECK_SLOT_DIR="$HOME/.local/bin"
 SHELLCHECK_SLOT="$SHELLCHECK_SLOT_DIR/shellcheck"
-SHELLCHECK_MANAGED="${XDG_DATA_HOME:-$HOME/.local/share}/ai-commander/shellcheck"
+SHELLCHECK_MANAGED="${XDG_DATA_HOME:-$HOME/.local/share}/mu-commander/shellcheck"
 
 shellcheck_version_of() { # <path> -> version string, empty when unreadable
   "$1" --version 2>/dev/null | awk '/^version:/{print $2; exit}'

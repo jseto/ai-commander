@@ -28,7 +28,7 @@ SB=$(mktemp -d)
 trap 'rm -rf "$SB"' EXIT
 
 SLOT="$SB/home/.local/bin/shellcheck"
-MANAGED="$SB/home/.local/share/ai-commander/shellcheck"
+MANAGED="$SB/home/.local/share/mu-commander/shellcheck"
 
 # ---------------------------------------------------------------------------
 # Sandbox

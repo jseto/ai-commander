@@ -2,7 +2,7 @@ Feature: Per-task difficulty levels for child model and thinking (sub-spawn)
   The orchestrator evaluates each task and picks one of three difficulty
   levels; the level decides the child's model and thinking level. The levels
   are configuration, not code: they live in config.json at the root of the
-  ai-commander checkout, inside the namespaced "taskLevels" top-level
+  mu-commander checkout, inside the namespaced "taskLevels" top-level
   section, seeded with the orchestrator's initial defaults
   (easy = mimo free @ medium, standard = mimo free @ xhigh, hard =
   deepseek-v4.1-flash @ xhigh, default = standard). config.json is a generic

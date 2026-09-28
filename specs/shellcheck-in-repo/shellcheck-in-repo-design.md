@@ -22,7 +22,7 @@ with no manual steps.
 | **pinned download + link into `~/.local/bin`** | **chosen**: `~/.local/bin` is already on PATH (before the stray `~/bin`), survives worktree churn, is version-pinnable, sha256-verifiable, and is fully declared/provisioned by the repo's setup path |
 
 `~/.local/bin/shellcheck` is a **symlink into the managed root**
-`$XDG_DATA_HOME/ai-commander/shellcheck/v<pin>/shellcheck`, which lets the
+`$XDG_DATA_HOME/mu-commander/shellcheck/v<pin>/shellcheck`, which lets the
 hook tell *its own* installs apart from a user's: managed links are refreshed
 when the pin changes, anything else is never written to — only warned about
 (the brief's "warn rather than reinstall over the user's").
