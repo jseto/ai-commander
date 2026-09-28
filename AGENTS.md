@@ -356,6 +356,41 @@ inherits `defaultThinkingLevel` / `modelThinkingLevels` / `defaultProjectTrust`
 from the global pi settings instead — no config problem can break a spawn.
 Spec: `specs/child-task-levels/`, tests: `tests/task-levels.test.sh`.
 
+**Free-provider fallback.** The free provider behind `easy`/`standard`
+(`opencode-zen-free/mimo-v2.6-flash-free`) can exhaust its quota and answer
+every request with `FreeUsageLimitError` (HTTP 429); pi treats that error as
+terminal (no retry), so the child stalls. `config.json` names a fallback for
+exactly that case, inside the same `taskLevels` section:
+
+```json
+"taskLevels": {
+  "default": "standard",
+  "fallbackModel": "opencode-go/deepseek-v4.1-flash",
+  "fallbackThinking": "max",
+  "levels": { ... }
+}
+```
+
+When a child is stuck on that error, recover it with:
+
+```bash
+"$SCRIPTS/sub-fallback.sh" <task>
+```
+
+The helper detects the error in the child's pane (it never switches
+speculatively), drives `/model <fallbackModel>` into the running child through
+the verified tmux send, waits for the status bar to show the new model, and
+leaves the child on `/thinking <fallbackThinking>` when the model switch did
+not already clamp there. No error, or a child already on the fallback, is a
+no-op with a clear message; with an error present but no
+`fallbackModel` configured it fails loudly and changes nothing — the other
+`sub-*` helpers never read the fallback entry, so an absent or malformed one
+cannot break them. `SUB_FALLBACK_MODEL` / `SUB_FALLBACK_THINKING` override the
+config values. `fallbackThinking` is model-specific (`max` is the top level
+`opencode-go/deepseek-v4.1-flash` accepts; its launch flag `xhigh` is clamped
+to `max`), so retune it when changing `fallbackModel`. Spec:
+`specs/free-limit-fallback/`, tests: `tests/free-limit-fallback.test.sh`.
+
 ### Orchestrator pattern: main session controls the children
 
 Conventions: the main session lives in tmux session `pi-main`; every child
