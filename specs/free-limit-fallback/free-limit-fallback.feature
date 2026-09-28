@@ -18,8 +18,8 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
     Given the repository's root config.json with its shipped taskLevels
       section
     When resolve_fallback_model is called with no override
-    Then it echoes "opencode-go/deepseek-v4.1-flash" and exits 0
-    And resolve_fallback_thinking echoes "max" and exits 0 without warnings
+    Then it echoes "opencode-go/mimo-v2.6-flash" and exits 0
+    And resolve_fallback_thinking echoes "high" and exits 0 without warnings
 
   Scenario: Env overrides win over the configured fallback [REQ-2]
     Given SUB_FALLBACK_MODEL=custom/fb and SUB_FALLBACK_THINKING=low are set
@@ -50,20 +50,22 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
 
   Scenario: A detected error switches the child to the fallback [REQ-6]
     Given a running child whose pane shows the free-limit error
-    And config.json names fallbackModel "opencode-go/deepseek-v4.1-flash"
+    And config.json names fallbackModel "opencode-go/mimo-v2.6-flash"
     When sub-fallback.sh runs for the task
-    Then "/model opencode-go/deepseek-v4.1-flash" is sent through the
+    Then "/model opencode-go/mimo-v2.6-flash" is sent through the
       verified send and confirmed
-    And it waits until the child's status bar shows "deepseek-v4.1-flash"
+    And it waits until the child's status bar shows the model id as a
+      delimited token, not as a substring of a longer id
     And it exits 0 reporting the switch
 
   Scenario: The configured thinking level is in effect after recovery [REQ-7]
-    Given the model switch already leaves the status bar at "max"
+    Given the model switch already leaves the status bar at the configured
+      level
     Then sub-fallback.sh sends no "/thinking" command and reports the level
       is already in effect
     When the model switch leaves the status bar at a different level
-    Then sub-fallback.sh sends "/thinking max" and waits until the status
-      bar shows it
+    Then sub-fallback.sh sends "/thinking <configured level>" and waits
+      until the status bar shows it
     And in both cases the recovered child ends on the configured level
 
   Scenario: A switch that never reaches the status bar fails loudly [REQ-8]
@@ -83,10 +85,34 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
 
   Scenario: Already on the fallback model is a no-op [REQ-10]
     Given a running child whose pane shows the free-limit error
-    And whose status bar already shows the fallback model
+    And whose status bar shows exactly the fallback model id, delimited by
+      the line edges or characters outside the model-id alphabet
     When sub-fallback.sh runs for the task
     Then no keys are sent to the child's pane
     And it prints that the child is already on the fallback and exits 0
+
+  Scenario: A status bar id that merely extends the fallback id is not "already on" [REQ-14]
+    Given a running child whose pane shows the free-limit error
+    And whose status bar shows "mimo-v2.6-flash-free" while the configured
+      fallbackModel is "opencode-go/mimo-v2.6-flash"
+    When sub-fallback.sh runs for the task
+    Then the prefix id does not count as already-on: "/model
+      opencode-go/mimo-v2.6-flash" is sent and confirmed
+    And it exits 0 reporting the switch
+
+  Scenario: A configured thinking level the model rejects degrades to the model recovery [REQ-15]
+    Given a running child whose pane shows the free-limit error
+    And the model switch succeeds and the status bar shows a level other
+      than the configured fallbackThinking
+    And the pane answers 'Error: Unknown thinking level "<level>"' to the
+      /thinking command
+    When sub-fallback.sh runs for the task
+    Then the model switch is reported and the helper exits 0
+    And it never reports the thinking level as set
+    And it warns that the configured fallbackThinking does not match
+      fallbackModel — a config problem for config.json
+    And it stops at the rejection instead of nudging the composer in a
+      warn loop, leaving the composer clear
 
   Scenario: A missing child session dies before anything else [REQ-11]
     Given the child's tmux session is not running
@@ -98,6 +124,14 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
     When it is inspected
     Then "Child model and thinking levels" names fallbackModel and
       sub-fallback.sh
+
+  Scenario: AGENTS.md documents the fallback without naming its values [REQ-16]
+    Given the repository's AGENTS.md
+    When its fallback wording is inspected
+    Then it points at the config.json taskLevels.fallbackModel /
+      taskLevels.fallbackThinking entries as the single source of truth
+    And it pins no value for either entry: no "fallbackModel": or
+      "fallbackThinking": value appears anywhere in the file
 
   Scenario: Touched scripts stay shellcheck-clean [REQ-13]
     Given shellcheck is available

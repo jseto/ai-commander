@@ -1,8 +1,8 @@
 {
   "taskLevels": {
     "default": "standard",
-    "fallbackModel": "opencode-go/deepseek-v4.1-flash",
-    "fallbackThinking": "max",
+    "fallbackModel": "opencode-go/mimo-v2.6-flash",
+    "fallbackThinking": "high",
     "levels": {
       "easy": {
         "description": "Chores, trims, config and docs edits, small fixes.",
