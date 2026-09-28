@@ -4,14 +4,14 @@
 # pi-* names, this launcher deliberately targets pi-main as a thin,
 # standalone, root-level launcher. It coexists with scripts/start-main.sh —
 # that one boots the orchestrator's session with layout and a verified pi
-# startup; mu.sh only creates the session (when missing) and runs pi in it
+# startup; mu only creates the session (when missing) and runs pi in it
 # directly, attaching to an existing session instead of starting a second pi.
 # The file is invoked as `mu` through a PATH symlink (e.g. ~/.local/bin/mu).
 set -euo pipefail
 
 # Resolve our own real path first (following symlinks), so that an invocation
 # via the PATH symlink roots the session at the repository directory holding
-# the real mu.sh — not at the symlink's directory. A direct ./mu.sh run takes
+# the real mu — not at the symlink's directory. A direct ./mu run takes
 # the no-symlink fast path and behaves exactly as before.
 SOURCE=${BASH_SOURCE[0]}
 while [[ -h $SOURCE ]]; do

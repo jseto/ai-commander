@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test suite for mu.sh (invoked as `mu`) — one assertion block per Gherkin
+# Test suite for mu (invoked as `mu`) — one assertion block per Gherkin
 # scenario in specs/mu-launcher/mu-launcher.feature ([REQ-n] traceable).
 # Migrated from test-pi-sh.sh, whose coverage this suite replaces: pi.sh's
 # "refuses the reserved pi-main name" scenario is inverted — mu must use
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-MU="$ROOT/mu.sh"
+MU="$ROOT/mu"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/nopi"
@@ -45,9 +45,9 @@ EOF
 chmod +x "$TMP/other-pi"
 
 # A fully controlled PATH for [REQ-7]'s "no pi anywhere" half: the logging
-# fake tmux plus the external tools mu.sh invokes on this direct-invocation
+# fake tmux plus the external tools mu invokes on this direct-invocation
 # path (bash for its #! line, dirname). Nothing here can provide a pi binary;
-# readlink is only reached when mu.sh is itself a symlink, which this path
+# readlink is only reached when mu is itself a symlink, which this path
 # never is.
 ln -s "$(command -v bash)" "$TMP/nopi/bash"
 ln -s "$(command -v dirname)" "$TMP/nopi/dirname"
@@ -64,7 +64,7 @@ assert_not()   { if grep -F -- "$1" "$2" >/dev/null; then fail "$3 — [$1] unex
 assert_empty() { if [ -s "$TMP/log" ]; then fail "$1 — tmux was called: $(cat "$TMP/log")"; fi; }
 assert_rc_nz() { if [ "$1" -eq 0 ]; then fail "$2 — expected non-zero exit, got 0"; fi; }
 
-run_mu() { # mu.sh args… — outside tmux, fake tools first on PATH
+run_mu() { # mu args… — outside tmux, fake tools first on PATH
   PATH="$TMP/bin:$PATH" TMUX='' TMUX_LOG="$TMP/log" TMUX_EXISTS="$TMP/exists" "$MU" "$@"
 }
 
@@ -94,7 +94,7 @@ reset
 run_mu
 assert_has 'attach-session -t =pi-main' "$TMP/log" 'REQ-4 attach'
 assert_not 'switch-client' "$TMP/log" 'REQ-4 no switch outside tmux'
-# The attach is the final tmux operation (mu.sh execs into the hand-off).
+# The attach is the final tmux operation (mu execs into the hand-off).
 [ "$(tail -n 1 "$TMP/log")" = 'attach-session -t =pi-main ' ] \
   || fail "REQ-4 final operation — last log line: $(tail -n 1 "$TMP/log")"
 
@@ -129,7 +129,7 @@ grep -F 'mu: pi executable not found' "$TMP/err" >/dev/null \
   || fail "REQ-7 error message — stderr: $(cat "$TMP/err")"
 assert_empty 'REQ-7 no pi on PATH'
 
-printf '[REQ-8] Root the session at the real mu.sh when invoked through a PATH symlink\n'
+printf '[REQ-8] Root the session at the real mu when invoked through a PATH symlink\n'
 reset
 ln -s "$MU" "$TMP/bin/mu" # a PATH command, exactly like ~/.local/bin/mu
 PATH="$TMP/bin:$PATH" TMUX='' TMUX_LOG="$TMP/log" TMUX_EXISTS="$TMP/exists" \
@@ -140,12 +140,12 @@ assert_not "-c $TMP/bin" "$TMP/log" 'REQ-8 symlink directory is never the root'
 
 # --- gates ------------------------------------------------------------------
 
-printf '[gate] mu.sh is executable and shellcheck-clean\n'
-[ -x "$MU" ] || fail 'mu.sh is not executable'
+printf '[gate] mu is executable and shellcheck-clean\n'
+[ -x "$MU" ] || fail 'mu is not executable'
 if command -v shellcheck >/dev/null 2>&1; then
   shellcheck "$MU" "$ROOT/tests/test-mu.sh" || fail 'shellcheck reported issues'
 else
   printf 'skip: shellcheck not available\n' >&2
 fi
 
-printf 'all mu.sh tests passed\n'
+printf 'all mu tests passed\n'
