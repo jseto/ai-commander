@@ -4,11 +4,24 @@
 # pi-* names, this launcher deliberately targets pi-main as a thin,
 # standalone, root-level launcher. It coexists with scripts/start-main.sh —
 # that one boots the orchestrator's session with layout and a verified pi
-# startup; com.sh only creates the session (when missing) and runs pi in it
+# startup; mu.sh only creates the session (when missing) and runs pi in it
 # directly, attaching to an existing session instead of starting a second pi.
+# The file is invoked as `mu` through a PATH symlink (e.g. ~/.local/bin/mu).
 set -euo pipefail
 
-ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# Resolve our own real path first (following symlinks), so that an invocation
+# via the PATH symlink roots the session at the repository directory holding
+# the real mu.sh — not at the symlink's directory. A direct ./mu.sh run takes
+# the no-symlink fast path and behaves exactly as before.
+SOURCE=${BASH_SOURCE[0]}
+while [[ -h $SOURCE ]]; do
+  DIR=$(cd -- "$(dirname -- "$SOURCE")" && pwd)
+  SOURCE=$(readlink -- "$SOURCE")
+  if [[ $SOURCE != /* ]]; then
+    SOURCE=$DIR/$SOURCE
+  fi
+done
+ROOT_DIR=$(cd -- "$(dirname -- "$SOURCE")" && pwd)
 SESSION_NAME=pi-main
 
 # PI_BIN wins over the PATH lookup so installations (and tests) can pin the
@@ -20,7 +33,7 @@ else
   PI_COMMAND=$(command -v pi || true)
 fi
 if [[ -z "$PI_COMMAND" ]]; then
-  printf 'com.sh: pi executable not found (set PI_BIN to its path)\n' >&2
+  printf 'mu: pi executable not found (set PI_BIN to its path)\n' >&2
   exit 127
 fi
 
