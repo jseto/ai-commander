@@ -120,7 +120,7 @@ worktree may have no dependencies installed.
 
 **This machine has a `post_create` hook configured** in the user-level
 `~/.config/treehouse/config.toml`, pointing at
-`/home/jseto/programming-projects/ai-commander/scripts/worktree-setup.sh`, which runs in each newly provisioned or reset
+`/home/jseto/programming-projects/mu-commander/scripts/worktree-setup.sh`, which runs in each newly provisioned or reset
 worktree right before `get` hands it over:
 
 - picks the JS package manager by lockfile (`pnpm-lock.yaml` →
@@ -237,7 +237,7 @@ inside each project's worktree. In a main session, set this once and use the
 absolute directory:
 
 ```bash
-SCRIPTS=/home/jseto/programming-projects/ai-commander/scripts
+SCRIPTS=/home/jseto/programming-projects/mu-commander/scripts
 ```
 
 | Script | Does |
