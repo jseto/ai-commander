@@ -1,0 +1,20 @@
+{
+  "name": "mu-commander",
+  "version": "0.1.0",
+  "description": "Orchestrate parallel pi coding sessions: the sub-*.sh tmux/treehouse helpers, the mu-orchestrator skill, and spawn/retire prompt templates.",
+  "keywords": [
+    "pi-package"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jseto/mu-commander.git"
+  },
+  "pi": {
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts/*.md"
+    ]
+  }
+}

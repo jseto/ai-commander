@@ -1,3 +1,4 @@
 tmp/
 logs/
 .lavish/
+node_modules/
