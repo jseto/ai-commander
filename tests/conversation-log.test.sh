@@ -323,7 +323,7 @@ sup_unmatched_names_untouched() {
 }
 
 # --- run -----------------------------------------------------------------
-[ -x "$SCRIPT" ] || printf 'NOTE: %s missing (RED phase)\n' "$SCRIPT"
+[ -x "$SCRIPT" ] || printf 'NOTE: %s missing\n' "$SCRIPT"
 
 run_test "Append an entry to the current week's log [REQ-1]" req_1
 run_test "Fold embedded newlines so an entry stays on one line [REQ-2]" req_2

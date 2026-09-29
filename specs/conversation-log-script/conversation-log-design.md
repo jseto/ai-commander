@@ -92,10 +92,10 @@ sequenceDiagram
 ## Task list
 
 1. Specs: scenarios + this design doc. ✅
-2. RED: write `tests/conversation-log.test.sh`, watch it fail (script
-   missing). ✅ (37/49 assertions failed, all for missing behavior)
-3. GREEN: implement `scripts/conversation-log.sh`; add `logs/` to
-   `.gitignore`; go green. ✅
+2. Write `tests/conversation-log.test.sh` (failing while the script is
+   missing: 37/49 assertions, all for missing behavior). ✅
+3. Implement `scripts/conversation-log.sh`; add `logs/` to `.gitignore`;
+   suite passes. ✅
 4. REFACTOR + verify: full suite green, `shellcheck` clean. ✅
 5. Code audit (independent pass per `code-auditor`), re-run tests. ✅
 6. Docs row in `AGENTS.md`, commit, push, open PR against `development`. ✅

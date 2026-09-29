@@ -5,8 +5,8 @@
 # Every test sources the script under test in a subshell with an isolated
 # $HOME (fixture written into $HOME/.pi/agent/settings.json) and asserts on
 # the produced child settings.json — no real ~/.pi state is ever read or
-# touched. SUB_COMMON_UNDER_TEST overrides the script under test so the
-# pre-change implementation can be exercised (RED) without modifying the tree.
+# touched. SUB_COMMON_UNDER_TEST overrides the script under test so a
+# candidate implementation can be exercised without modifying the tree.
 set -u
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

@@ -17,7 +17,7 @@ REAL_SHELLCHECK=$(command -v shellcheck || true)
 REAL_SHA256SUM=$(command -v sha256sum || printf '/usr/bin/sha256sum')
 
 # Pinned version as declared by the setup script itself (falls back to the
-# current default while the pin does not exist yet, i.e. during RED).
+# current default while the pin does not exist yet).
 PIN=$(awk -F= '/^SHELLCHECK_VERSION=/{print $2}' "$SETUP" 2>/dev/null || true)
 PIN=${PIN:-0.10.0}
 

@@ -81,13 +81,13 @@ flowchart LR
   origin --> GH
 ```
 
-## Plan (TDD order)
+## Plan
 
 1. Write `tests/rename-mu-commander.test.sh` (+ the feature/design docs) →
-   suite is RED against the current tree (old identifiers still present).
-2. Apply the tracked-file renames → `[REQ-1]`–`[REQ-5]` go green.
+   the new checks fail against the current tree (old identifiers present).
+2. Apply the tracked-file renames → `[REQ-1]`–`[REQ-5]` pass.
 3. Rename the GitHub repo, re-point `origin`, then push and open the PR →
-   `[REQ-6]` green.
+   `[REQ-6]` passes.
 4. Full `tests/*.sh` suite green + shellcheck clean, commit, report.
 5. Follow-up (PR #10 squash-merged as `cd236ce`): rebase onto
    `origin/development`, resolve the `ai-commander` ↔ `mu-commander`

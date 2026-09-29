@@ -71,16 +71,16 @@ flowchart LR
   OR[(origin)] --> GH
 ```
 
-## Plan (TDD order)
+## Plan
 
 1. Write `tests/rename-project.test.sh` and update the assertions in
-   `tests/worktree-setup.test.sh` first → suite RED (they assert the new
-   names while code still has the old ones).
-2. Apply the tracked-file renames → [REQ-1]/[REQ-3] go green.
+   `tests/worktree-setup.test.sh` → the new assertions fail against the
+   current tree (they name the new names while code still has the old ones).
+2. Apply the tracked-file renames → [REQ-1]/[REQ-3] pass.
 3. Machine fixes (treehouse hook, shellcheck move + symlink re-point),
    applied by the orchestrator after the folder rename → [REQ-4]/[REQ-5]
-   go green.
-4. GitHub rename + origin URL → [REQ-7] green; then push and open the PR.
+   pass.
+4. GitHub rename + origin URL → [REQ-7] passes; then push and open the PR.
 5. Full suite green, commit, report.
 
 Follow-up completion (this branch, after the PR #10 squash merge): rebase

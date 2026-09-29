@@ -91,9 +91,9 @@ treehouse tolerates the final non-zero exit so `get` is never failed.
 ## Steps
 
 1. [x] Specs: `shellcheck-in-repo.feature` + this design doc.
-2. [x] RED: `tests/worktree-setup.test.sh` (REQ-1…REQ-8 + supplementary),
-       observed failing against the current hook.
-3. [x] GREEN: implement the shellcheck section in `worktree-setup.sh`.
+2. [x] `tests/worktree-setup.test.sh` (REQ-1…REQ-8 + supplementary),
+       observed failing against the pre-change hook.
+3. [x] Implement the shellcheck section in `worktree-setup.sh`.
 4. [x] REFACTOR + full suite green + `shellcheck` clean on touched scripts.
 5. [x] Docs: AGENTS.md bullet (covered by REQ-8 test).
 6. [x] Real verification: fresh-`HOME` run, real-`HOME` run, second run

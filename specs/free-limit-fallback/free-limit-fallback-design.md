@@ -36,7 +36,7 @@ names no fallback value at all; it only points at the
   automatically when a child hits `FreeUsageLimitError`; must go through the
   verified send; must confirm the switch in the status bar; no-op with a clear
   message without an error; never switch speculatively; graceful degradation
-  when the config entry is absent: specs + TDD + shellcheck; AGENTS.md update.
+  when the config entry is absent: specs + tests + shellcheck; AGENTS.md update.
   Follow-up (live test of 2026-09-29, task brief fix-fallback-model-switch):
   the already-on guard must match the status-bar model id **with a boundary**
   (the free id `…-free` contains the fallback id as a substring, which made
@@ -215,8 +215,8 @@ flowchart TD
       `/thinking` validation/clamping, Enter races, completion popup) in
       scratch tmux panes
 - [x] Write the feature file and this design doc
-- [x] RED: run the new suite against the unchanged tree
-- [x] GREEN: implement config + helpers + helper script; suite passes
+- [x] Run the new suite against the unchanged tree (failures reproduced)
+- [x] Implement config + helpers + helper script; suite passes
 - [x] Real end-to-end recovery: a live child stuck on the 429 switched to
       deepseek-v4.1-flash @ max, re-running the helper is a no-op
 - [x] Popup-swallow hardening (status-bar confirmation + Enter nudge + C-u
@@ -225,8 +225,8 @@ flowchart TD
 - [x] AGENTS.md section updated
 - [x] Code audit pass (below)
 - [x] Round 2 (fix-fallback-model-switch): specs for [REQ-14]…[REQ-16]
-      written first, then the three regressions RED (prefix-collision no-op,
-      shipped-value drift, stale `fallbackThinking`) → GREEN
+      written first, then the three regressions reproduced (prefix-collision
+      no-op, shipped-value drift, stale `fallbackThinking`) and fixed
 - [x] Full suite green + shellcheck after round 2
 - [x] Code audit pass, round 2 (below)
 

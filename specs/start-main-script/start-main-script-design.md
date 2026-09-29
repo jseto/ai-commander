@@ -97,9 +97,10 @@ flowchart LR
 ## Task list
 
 - [x] Deduce requirements, write Gherkin `[REQ-1..9]` + design doc.
-- [x] RED: write `tests/test-start-main.sh`, watch every scenario fail for
-      the right reason (missing script/behaviour).
-- [x] GREEN: implement `scripts/start-main.sh`.
+- [x] Write `tests/test-start-main.sh` (one test per scenario; exercised
+      against the pre-implementation tree, failures naming the missing
+      script/behaviour).
+- [x] Implement `scripts/start-main.sh`.
 - [x] REFACTOR + verify: all scenarios green, `shellcheck` clean
       (`shellcheck -x -P SCRIPTDIR scripts/start-main.sh tests/test-start-main.sh`).
 - [x] Code audit (`code-auditor`): no major improvements found; the small

@@ -35,8 +35,8 @@ merge/write, so the file is never left empty by the `>` truncation).
 - **`specs/child-model-defaults/`** (new): this design + the feature file.
 - **`tests/sub-common.test.sh`** (new): behavioural suite for
   `prepare_child_agent_dir` covering [REQ-1]…[REQ-7]; honours
-  `SUB_COMMON_UNDER_TEST` so the pre-change implementation can be exercised
-  (RED) without touching the working tree.
+  `SUB_COMMON_UNDER_TEST` so a candidate implementation can be exercised
+  without touching the working tree.
 
 ## Behaviour and data flow
 
@@ -66,9 +66,9 @@ flowchart TD
 
 - [x] Deduce atomic requirements from the brief → [REQ-1]…[REQ-8]
 - [x] Write the feature file and this design doc
-- [x] RED: run the new suite against the pre-change implementation
-- [x] GREEN: full suite + shellcheck + `bash -n` pass on the change
-- [x] Independent code audit (see note below) → rerun tests GREEN
+- [x] Run the new suite against the pre-change implementation
+- [x] Implement; full suite + shellcheck + `bash -n` pass on the change
+- [x] Independent code audit (see note below) → tests re-run and pass
 
 ## Strengths / Weaknesses
 
@@ -94,4 +94,4 @@ was needed (skill: stop at step 2 and note lesser ideas here):
   (`inherit_model_defaults <src> <dest>`) if a second caller ever appears —
   today there is exactly one caller, so it would only add indirection.
 
-Tests re-run after the audit: all [REQ-1]…[REQ-8] GREEN.
+Tests re-run after the audit: all [REQ-1]…[REQ-8] pass.

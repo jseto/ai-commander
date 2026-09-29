@@ -13,7 +13,7 @@ initial defaults:
 | Level | For | Model | Thinking |
 |---|---|---|---|
 | `easy` | chores, trims, config/docs edits | `opencode-zen-free/mimo-v2.6-flash-free` | `medium` |
-| `standard` (default) | features/bug fixes, full specs+TDD flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
+| `standard` (default) | features/bug fixes, full specs flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
 | `hard` | architecture, root-cause, long-haul work | `opencode-go/deepseek-v4.1-flash` | `xhigh` |
 
 Retuning the trade-off (e.g. moving a model, changing a thinking cap) is a
@@ -115,8 +115,8 @@ flowchart TD
 
 - [x] Deduce atomic requirements from the brief → [REQ-1]…[REQ-11]
 - [x] Write the feature file and this design doc
-- [x] RED: run the new suite against the pre-change implementation
-- [x] GREEN: full suite (`task-levels`, `sub-common`) + shellcheck + `bash -n` pass
+- [x] Run the new suite against the pre-change implementation
+- [x] Implement; full suite (`task-levels`, `sub-common`) + shellcheck + `bash -n` pass
 - [x] Generic-config refactor: root `config.json`, `taskLevels` namespace,
       [REQ-12] (unknown sibling top-level keys ignored), warnings name
       `config.json`

@@ -166,9 +166,8 @@ relative to themselves.
 
 - [x] Deduce atomic requirements from the brief → [REQ-1]…[REQ-7]
 - [x] Write the feature file and this design doc
-- [x] RED: write `tests/package-manifest.test.sh`, watch it fail (no
-      package.json yet)
-- [x] GREEN: package files + skill + templates + README → suite green
+- [x] Write `tests/package-manifest.test.sh` (one test per scenario)
+- [x] Implement the package files + skill + templates + README; suite passes
 - [x] No-regression gate: every existing `tests/*.test.sh` suite + shellcheck
       on the new test + `bash -n` pass
 - [x] Hermetic local install verified (`pi install` → `pi list` →

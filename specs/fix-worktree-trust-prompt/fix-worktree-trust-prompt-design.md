@@ -104,9 +104,9 @@ sequenceDiagram
 
 - [x] Deduce atomic requirements, write scenarios + this design
 - [x] Write the harness, watch `[REQ-1]`/`[REQ-3]` fail for the right reason
-- [x] Live RED: real `sub-spawn.sh` + real pi on a fresh worktree → prompt
+- [x] Live check: real `sub-spawn.sh` + real pi on a fresh worktree → prompt
 - [x] Add `--approve` to the launch line
-- [x] GREEN: harness all pass, shellcheck clean, live proof on a fresh worktree
+- [x] Harness all pass, shellcheck clean, live proof on a fresh worktree
 - [x] Code audit (see Audit note below)
 - [x] Commit, push, open PR against `development`
 
