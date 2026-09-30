@@ -16,7 +16,6 @@ import {
 import type { ChildSession, RunExec } from "../../.pi/extensions/lib/child-sessions.ts";
 import { listChildSessions } from "../../.pi/extensions/lib/child-sessions.ts";
 import type { ListeningProcess } from "../../.pi/extensions/lib/listening-ports.ts";
-import { createRepoIdentity, listScopedChildren } from "../../.pi/extensions/lib/repo-scope.ts";
 import { sendLine } from "../../.pi/extensions/lib/tmux-send.ts";
 import {
 	COMMAND_NAME,
@@ -197,7 +196,7 @@ function createFakeBridge() {
 }
 
 describe("Telegram /mudevserver command for mu-commander child pi sessions", () => {
-	it("List the running mu-commander child sessions with their worktree and dev-server state. [REQ-1]", async () => {
+	it("List all running child sessions with their repo, worktree, and dev-server state. [REQ-1]", async () => {
 		const run = createTmuxRun({
 			sessions: ["pi-main", "pi-beta", "pi-alpha"],
 			paths: { "pi-alpha": "/tree/alpha", "pi-beta": "/tree/beta" },
@@ -551,36 +550,61 @@ describe("Telegram /mudevserver command for mu-commander child pi sessions", () 
 		);
 	});
 
-	it("List only children rooted in the session's repository checkouts. [REQ-17]", async () => {
-		const repoRoot = "/repo/mu-commander";
-		const run: RunExec = async (file, args) => {
-			if (file === "tmux" && args[0] === "list-sessions") {
-				return { stdout: "pi-alpha\npi-other\n", stderr: "" };
-			}
-			if (file === "tmux" && args[0] === "display-message") {
-				const session = args[args.indexOf("-t") + 1] ?? "";
-				const paths: Record<string, string> = {
-					"pi-alpha": "/pool/mu-commander/1/mu-commander",
-					"pi-other": "/pool/other/1/other",
-				};
-				return { stdout: `${paths[session] ?? ""}\n`, stderr: "" };
-			}
-			if (file === "git" && args.includes("--git-common-dir")) {
-				const path = args[1] ?? "";
-				const commonDir = path.includes("other") ? "/repo/other/.git" : `${repoRoot}/.git`;
-				return { stdout: `${commonDir}\n`, stderr: "" };
-			}
-			throw new Error(`unexpected ${file} ${args.join(" ")}`);
-		};
-		const identity = createRepoIdentity(run);
-		const harness = createHarness({
-			children: await listScopedChildren(run, identity, repoRoot, null),
+	it("List children of every repository's pool, labeled with their repo. [REQ-17]", async () => {
+		// The fake spans two treehouse pools: a mu-commander worktree and a
+		// riak-t worktree. Discovery must keep both [REQ-17].
+		const run = createTmuxRun({
+			sessions: ["pi-main", "pi-alpha", "pi-riak-166-driver-info-view"],
+			paths: {
+				"pi-alpha": "/pool/mu-commander-70dc7d/1/mu-commander",
+				"pi-riak-166-driver-info-view": "/pool/riak-t-f778a7/1/riak-t",
+			},
 		});
+		const harness = createHarness({ children: await listChildSessions(run, "pi-main") });
 
 		await harness.core.handle({}, "");
 
+		assert.equal(harness.deliveries.length, 1);
 		const text = harness.deliveries[0]!.view.text;
-		assert.match(text, /alpha/);
-		assert.doesNotMatch(text, /other/);
+		assert.match(text, /repo <code>mu-commander<\/code>/);
+		assert.match(text, /repo <code>riak-t<\/code>/);
+		assert.match(text, /riak-166-driver-info-view/);
+		assert.match(text, /\/pool\/riak-t-f778a7\/1\/riak-t/);
+		// Ordered by task name: alpha (mu-commander) before the riak-t child.
+		assert.ok(text.indexOf("alpha") < text.indexOf("riak-166-driver-info-view"));
+		assert.doesNotMatch(text, /No child session is running/);
+		assert.doesNotMatch(text, /pi-main/);
+	});
+
+	it("Select a child of another repository end to end. [REQ-18]", async () => {
+		const riak: ChildSession = {
+			task: "riak-166-driver-info-view",
+			session: "pi-riak-166-driver-info-view",
+			worktree: "/pool/riak-t-f778a7/2/riak-t",
+			repo: "riak-t",
+		};
+		const harness = createHarness({
+			children: [riak],
+			discover: [[], [listener(4173, riak.worktree)]],
+			urls: { 4173: { intranet: "http://lan:4173", tailscale: "http://ts:4173" } },
+		});
+
+		await harness.core.handle({}, "riak-166");
+
+		// The ask lands in the foreign pool's pane, and its listener is captured.
+		assert.deepEqual(
+			harness.lines.map((line) => line.session),
+			["pi-riak-166-driver-info-view"],
+		);
+		assert.equal(harness.lines[0]!.text, childInstruction("riak-166-driver-info-view"));
+		const sends = harness.deliveries.filter((entry) => entry.kind === "send");
+		const edits = harness.deliveries.filter((entry) => entry.kind === "edit");
+		assert.equal(sends.length, 1);
+		assert.equal(edits.length, 1);
+		assert.equal(edits[0]!.handle, sends[0]!.handle);
+		const text = edits[0]!.view.text;
+		assert.match(text, /port <code>4173<\/code>/);
+		assert.match(text, /<a href="http:\/\/lan:4173">intranet<\/a>/);
+		assert.match(text, /<a href="http:\/\/ts:4173">Tailscale<\/a>/);
 	});
 });

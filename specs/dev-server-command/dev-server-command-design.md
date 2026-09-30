@@ -5,9 +5,9 @@
 The mu-commander orchestrator pattern runs each task as a child pi session in a
 tmux session named `pi-<task>`, rooted at a leased treehouse worktree
 (`scripts/sub-spawn.sh`). From the phone, the user wants to open a child's dev
-server: list the live children of this repository, ask the selected one to start
-its project's dev server, discover the port it binds, and deliver the intranet
-and Tailscale links as clickable Telegram HTML links.
+server: list the live children of *any* repository's pool, ask the selected one
+to start its project's dev server, discover the port it binds, and deliver the
+intranet and Tailscale links as clickable Telegram HTML links.
 
 ## Install scope: a project extension
 
@@ -20,21 +20,22 @@ The project root used for scoping is derived from the extension's own location
 (`import.meta.url` -> `<repo>/.pi/extensions` -> `<repo>`), so it is correct in
 the main checkout and in every treehouse worktree.
 
-## Child scope: same repository by git identity
+## Child scope: every pool on the machine
 
-The orchestrator can have children of *other* repositories running (its
-`pi-main` session lives in mu-commander, but a child may be rooted in the
-riak-t pool). Those must never be listed or addressed, so the tmux menu is
-narrowed to checkouts of the same repository as the extension's project root
-[REQ-17].
+The command runs as a project extension (session gate: none), but its *menu*
+is deliberately **cross-repo**: it lists every live `pi-<task>` child session
+on the machine, whichever treehouse pool (`~/.treehouse/<repo>-*/`) its
+worktree belongs to, and each entry carries the child's repo name so
+`riak-166-driver-info-view` (riak-t) is distinguishable from a mu-commander
+child [REQ-17]. Selecting a child of another repository works end to end -
+verified ask into its `pi-<task>` pane, port capture, intranet + Tailscale
+links - because the flow is rooted at the selected child's worktree path and
+the port scan reads `/proc/net/tcp{,6}` host-wide [REQ-18].
 
-Repository identity is the git common directory:
-`git rev-parse --path-format=absolute --git-common-dir` returns
-`<main checkout>/.git` for the main checkout and every linked worktree of the
-repository, and a different path for any other repository.
-`repo-scope.ts` (under `.pi/extensions/lib/`) wraps that behind
-`createRepoIdentity`/`listScopedChildren`, with a per-path common-dir cache
-and a relative-path fallback for older git.
+Discovery is unchanged: the live tmux sessions matching `pi-<task>` (see
+*Child discovery*). No repository filter, no treehouse lease call, and no
+repo-scope module: the git-common-dir scoping that shipped with PR #22 is
+removed with this change (`lib/repo-scope.ts` deleted).
 
 ## Surfaces and constraints (verified against pi-telegram 0.51.6)
 
@@ -83,9 +84,11 @@ Children are the live tmux sessions matching `pi-<task>` (excluding `pi-main`
 and the current session), because a tmux session dies with its last pane, so a
 live session means a live child pi. The worktree is the session's
 `#{pane_current_path}` (tmux starts each child with `-c "$WT"`); the repo is
-the basename of the worktree's git toplevel. The same-repository filter then
-drops every other repository's child [REQ-17]. No treehouse call is needed: the
-pane path _is_ the leased worktree under the orchestrator's spawn convention.
+the basename of the worktree's git toplevel - pool-agnostic, so a riak-t
+worktree under `~/.treehouse/riak-t-*/` resolves to repo `riak-t`. There is no
+repository filter [REQ-17]: every pool on the machine is listed. No treehouse
+call is needed: the pane path _is_ the leased worktree under the orchestrator's
+spawn convention.
 
 ## Dev-server detection and port capture
 
@@ -135,7 +138,6 @@ flowchart LR
     FLOW["ask -> poll -> edit"]
   end
   subgraph adapters [".pi/extensions/lib (adapters at the seams)"]
-    RS["repo-scope.ts\ngit common-dir child filter"]
     CS["child-sessions.ts\ntmux ls + pane cwd + git toplevel"]
     LP["listening-ports.ts\n/proc socket scan"]
     TS["tmux-send.ts\nverified send-line"]
@@ -164,10 +166,8 @@ machine, and the in-flight set. Every dependency is injected (`listChildren`,
 
 - `telegram-bridge.ts` - the `TelegramBridge` interface and the concrete
   pi-telegram access; the only file that knows how to reach the bridge.
-- `repo-scope.ts` - `createRepoIdentity` / `listScopedChildren`; the
-  same-repository child filter.
 - `child-sessions.ts` - `listChildSessions`: task-name parsing plus exec
-  adapters for tmux and git.
+  adapters for tmux and git; cross-repo, no scope filter [REQ-17].
 - `listening-ports.ts` - pure `parseProcNetTcp`/`decodeProcAddress`/
   `isLoopbackAddress`/`devServerPorts`; live `scanListeningProcesses(roots)`.
 - `tmux-send.ts` - pure `flattenPane`/`paneProbe`; `sendLine(run, …)`.
@@ -182,8 +182,8 @@ self-contained in this repository and inert everywhere else; detection reuses
 the proven reachable-URL probes; the port is discovered from the OS instead of
 parsed from child prose, so a child that starts the server any way (tmux,
 background, npm) is found as long as it binds non-loopback in its worktree;
-repo identity via git common-dir follows worktrees automatically and never
-matches by accident; the core is fully fake-testable.
+the menu spans every pool with repo labels so scope stays visible rather than
+enforced; the core is fully fake-testable.
 
 **Weaknesses.** `/proc` and non-loopback listeners are Linux-specific (fine for
 this personal setup) and a server the child starts loopback-only will time out
@@ -222,6 +222,39 @@ Less valuable observations, deliberately left as-is:
   published while the project extension is loaded may linger in the client
   until the next sync; routing in a session without the project extension does
   not know the command.
+
+## Audit notes (cross-repo pass, independent)
+
+Read from disk (feature + modified sources, not the design or tests) against
+the `codebase-design` vocabulary. Verdict: the change *reduces* architecture
+and the seams hold; no structural problem worth a refactor was found.
+
+- **Deletion test passed by deletion.** `lib/repo-scope.ts` carried real
+  complexity (git common-dir identity, per-path cache, legacy-git fallback, a
+  filter) for one requirement; with REQ-17 inverted the whole chain
+  (`projectRoot` / `RepoIdentity` / `listScopedChildren`) vanished rather than
+  decaying into a pass-through shell - no caller re-implements scoping, and
+  grep shows no dead references.
+- **Locality improved.** The cross-repo policy now lives in exactly one code
+  line (the wiring's `listChildren` in `createWiredCore`) plus its comment;
+  previously the scope decision was split across enumeration and filtering.
+- **`createWiredCore` stayed deep**: one options object (`{bridge, run?}`)
+  behind which discovery, `/proc` scan, URL probes and delivery are wired; the
+  new `run` option is the test seam at the same place the other adapters sit.
+
+Less valuable observations, deliberately left as-is:
+
+- `WiredCoreOptions.run` is optional, so the production default `runExec` is
+  implicit interface knowledge for tests; making it required would be more
+  explicit but touches both call sites for no behaviour gain.
+- `cross-repo.test.ts` grows a fake-tmux adapter shaped like `createTmuxRun`
+  in `dev-server-command.test.ts`; a shared fake would deduplicate, but the
+  two deliberately differ (send-recording vs. menu-serving) and node test
+  files are standalone - not earned yet.
+- `repoName` runs one `git rev-parse` per child per render and `menuView`
+  probes reachable URLs for every listening child (pre-existing note above);
+  both are bounded by the handful of live children, and caching would go stale
+  exactly when the user re-runs the command for fresh state.
 
 ## Verification
 

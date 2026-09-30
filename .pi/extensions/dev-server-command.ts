@@ -4,26 +4,29 @@
  * project's dev server, discover the port it binds, and deliver the
  * phone-reachable intranet and Tailscale links as HTML anchors.
  *
- * Wiring only: this file knows tmux, /proc, and the extension's own location;
- * the flow lives in `lib/dev-server-command-core.ts` and the pi-telegram
- * surface in `telegram-bridge.ts`, both injected. See
- * `specs/dev-server-command/` for the requirements and design.
+ * Wiring only: this file knows tmux and /proc; the flow lives in
+ * `lib/dev-server-command-core.ts` and the pi-telegram surface in
+ * `telegram-bridge.ts`, both injected. See `specs/dev-server-command/` for
+ * the requirements and design.
  *
  * Install scope: this is a *project* extension (`.pi/extensions/` inside the
  * mu-commander repository), so pi loads it only for sessions of this project -
- * no runtime session gate is needed. The child menu is still narrowed to
- * checkouts of the same repository because the orchestrator can have children
- * of other repositories running. Registration follows the deferred
- * `session_start` pattern (pi-telegram binds its registries after extension
- * factories run) and is disposed on `session_shutdown`.
+ * no runtime session gate is needed. The child menu itself is cross-repo: it
+ * lists every live `pi-<task>` child on the machine, whichever treehouse pool
+ * its worktree belongs to, labeled with the child's repo [REQ-17].
+ * Registration follows the deferred `session_start` pattern (pi-telegram binds
+ * its registries after extension factories run) and is disposed on
+ * `session_shutdown`.
  */
 
 import { execFile } from "node:child_process";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { currentTmuxSession, type RunExec } from "./lib/child-sessions.ts";
+import {
+	currentTmuxSession,
+	listChildSessions,
+	type RunExec,
+} from "./lib/child-sessions.ts";
 import {
 	createDevServerCore,
 	type DeliveryTarget,
@@ -34,7 +37,6 @@ import {
 } from "./lib/dev-server-command-core.ts";
 import { scanListeningProcesses } from "./lib/listening-ports.ts";
 import { detectInternalUrl, detectTailscaleUrl } from "./lib/reachable-url.ts";
-import { createRepoIdentity, listScopedChildren, type RepoIdentity } from "./lib/repo-scope.ts";
 import { sendLine } from "./lib/tmux-send.ts";
 import {
 	createTelegramBridge,
@@ -76,23 +78,20 @@ export function waitMsFromEnv(env: Record<string, string | undefined>): number {
 }
 
 export interface WiredCoreOptions {
-	projectRoot: string;
-	identity: RepoIdentity;
 	bridge: TelegramBridge;
+	/** Exec adapter; tests inject a fake tmux/git, production uses `runExec`. */
+	run?: RunExec;
 }
 
-/** The production core: scoped tmux children, /proc listeners, bridge delivery. */
+/** The production core: cross-repo tmux children, /proc listeners, bridge delivery. */
 export function createWiredCore(options: WiredCoreOptions): DevServerCore {
+	const run = options.run ?? runExec;
 	const deps: DevServerCoreDeps = {
-		listChildren: async () =>
-			listScopedChildren(
-				runExec,
-				options.identity,
-				options.projectRoot,
-				await currentTmuxSession(runExec),
-			),
+		// No repository filter: every live pi-<task> child on the machine is
+		// listed, whichever treehouse pool its worktree belongs to [REQ-17].
+		listChildren: async () => listChildSessions(run, await currentTmuxSession(run)),
 		discoverListeners: (roots) => scanListeningProcesses(roots),
-		sendLine: (session, text) => sendLine(runExec, session, text),
+		sendLine: (session, text) => sendLine(run, session, text),
 		detectReachableUrls: async (port) => {
 			const [intranet, tailscale] = await Promise.all([
 				detectInternalUrl(port),
@@ -143,7 +142,7 @@ export function registerDevServerSurfaces(
 		try {
 			unregisterCommand = await bridge.registerCommand({
 				name: COMMAND_NAME,
-				description: "List or start a mu-commander child's dev server",
+				description: "List or start a child's dev server (any repository)",
 				emoji: COMMAND_EMOJI,
 				showInMenu: true,
 				handler: (ctx: TelegramCommandContext) => dispatch({}, ctx.args),
@@ -163,15 +162,7 @@ export function registerDevServerSurfaces(
 	pi.on("session_shutdown", cleanup);
 }
 
-/** The repository checkout that contains this extension (`<repo>/.pi/extensions/`). */
-export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
 export default function (pi: PiExtensionApi) {
-	const identity = createRepoIdentity(runExec);
 	const bridge = createTelegramBridge();
-	registerDevServerSurfaces(
-		pi,
-		createWiredCore({ projectRoot: PROJECT_ROOT, identity, bridge }),
-		bridge,
-	);
+	registerDevServerSurfaces(pi, createWiredCore({ bridge }), bridge);
 }
