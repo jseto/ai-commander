@@ -229,6 +229,22 @@ seed_error() {
 ERR
 }
 
+# The second free-provider failure (observed in production): pi's
+# auto-compaction/summarization calls rejected with HTTP 403 FreeTierError,
+# which wedges the child exactly like the 429 quota does. The 403 sits on
+# its own line; the JSON error type follows on the next.
+seed_free_tier_error() {
+  cat >> "$FAKE_TMUX_DIR/pane" <<'ERR'
+
+ hi
+
+ Auto-compaction failed: Turn prefix summarization failed: 403:
+{"type":"FreeTierError","message":"OpenCode's free tier can only be used from within OpenCode"}
+Context overflow recovery failed: Turn prefix summarization failed: 403:
+{"type":"FreeTierError","message":"OpenCode's free tier can only be used from within OpenCode"}
+ERR
+}
+
 count_literal() { grep -c -- ' -l ' "$FAKE_TMUX_DIR/log"; }
 count_enter()   { grep -c -- ' Enter$' "$FAKE_TMUX_DIR/log"; }
 
@@ -487,6 +503,68 @@ t_req15_rejected_thinking_degrades_to_model_recovery() {
     || fail "the child must end on the switched model: $(cat "$FAKE_TMUX_DIR/footer")"
 }
 
+# [REQ-17] regression for the production wedge the helper no-opped on:
+# pi's compaction calls rejected with HTTP 403 FreeTierError — a pane with
+# no FreeUsageLimitError/429 anywhere, so the old detector answered
+# "no FreeUsageLimitError in …" and left the child stuck.
+t_req17_free_tier_error_detected() {
+  jq_ok || return 0
+  setup
+  add_session "$SESS"
+  seed_free_tier_error
+  (source "$COMMON"; pane_has_free_limit_error "$TASK" 50) \
+    || fail "the 403 FreeTierError compaction failure must be detected"
+  # End to end: the helper must switch instead of no-op'ing.
+  run_fallback "$TASK"
+  expect_rc0
+  grep -q -- '-l /model opencode-go/mimo-v2.6-flash' "$FAKE_TMUX_DIR/log" \
+    || fail "the FreeTierError failure was not recovered: $(cat "$FAKE_TMUX_DIR/log")"
+  grep -qF -- '(opencode-go) mimo-v2.6-flash' "$FAKE_TMUX_DIR/footer" \
+    || fail "the fake footer never showed the switched model: $(cat "$FAKE_TMUX_DIR/footer")"
+  expect_out "switched"
+  # A healthy pane still reports no failure (never speculative).
+  setup
+  add_session "$SESS"
+  printf '%s\n' 'working normally, no provider errors here' > "$FAKE_TMUX_DIR/pane"
+  if (source "$COMMON"; pane_has_free_limit_error "$TASK" 50); then
+    fail "a clean pane must not be reported as an error"
+  fi
+}
+
+# [REQ-18] with two detected failure kinds the user-facing messages must
+# describe what the helper actually looks for: the no-switch message names
+# both signatures (not only FreeUsageLimitError), and the no-fallback
+# failure describes the pane as a free-provider failure. A healthy pane
+# must still no-op without a single key press.
+t_req18_messages_describe_detected_failures() {
+  jq_ok || return 0
+  setup
+  add_session "$SESS"
+  printf '%s\n' 'working normally, no provider errors here' > "$FAKE_TMUX_DIR/pane"
+  run_fallback "$TASK"
+  expect_rc0
+  [ "$(count_literal)" -eq 0 ] || fail "no keys may be sent to a healthy pane: $(cat "$FAKE_TMUX_DIR/log")"
+  [ "$(count_enter)" -eq 0 ] || fail "no Enter may be sent to a healthy pane: $(cat "$FAKE_TMUX_DIR/log")"
+  expect_out "no model switch performed"
+  expect_out "FreeUsageLimitError"
+  expect_out "FreeTierError"
+  expect_not_out "no FreeUsageLimitError in"
+
+  setup
+  add_session "$SESS"
+  seed_free_tier_error
+  cat > "$SB/no-fallback.json" <<'JSON'
+{"taskLevels":{"default":"standard","levels":{"standard":{"model":"m","thinking":"high"}}}}
+JSON
+  export SUB_LEVELS_CONFIG="$SB/no-fallback.json"
+  run_fallback "$TASK"
+  expect_rc_nonzero
+  expect_err "ERROR:"
+  expect_err "fallbackModel"
+  expect_err "free-provider failure detected"
+  [ "$(count_literal)" -eq 0 ] || fail "no keys may be sent without a fallback: $(cat "$FAKE_TMUX_DIR/log")"
+}
+
 t_req11_missing_session_dies() {
   setup
   run_fallback "$TASK"
@@ -548,6 +626,8 @@ run "[REQ-9]  error without a fallback sends nothing"        t_req9_error_withou
 run "[REQ-10] already on fallback is a no-op"                t_req10_already_on_fallback_is_a_noop
 run "[REQ-14] prefix-colliding id is not 'already on'"       t_req14_prefix_collision_is_not_already_on
 run "[REQ-15] rejected thinking degrades to the recovery"    t_req15_rejected_thinking_degrades_to_model_recovery
+run "[REQ-17] FreeTierError/403 pane failure is detected"    t_req17_free_tier_error_detected
+run "[REQ-18] messages describe both detected failure kinds"  t_req18_messages_describe_detected_failures
 run "[REQ-11] missing child session dies"                    t_req11_missing_session_dies
 run "[REQ-12] AGENTS.md documents the fallback"              t_req12_agents_md_documents_fallback
 run "[REQ-16] AGENTS.md names no fallback values"            t_req16_agents_md_names_no_fallback_values

@@ -2,8 +2,12 @@
 
 ## Summary
 
-The free provider used by the `easy`/`standard` child levels can run out of
-quota and answer every request with `FreeUsageLimitError` (HTTP 429). Pi
+The free provider used by the `easy` child level can run out of
+quota and answer every request with `FreeUsageLimitError` (HTTP 429), and a
+second free-provider rejection wedges a child the same way: pi's
+compaction/summarization calls answered with HTTP 403 `FreeTierError`
+("free tier can only be used from within OpenCode") block auto-compaction
+and leave the child stuck. Pi
 classifies that provider error as **terminal** — it retries transient 429s but
 deliberately not `FreeUsageLimitError`/`GoUsageLimitError`
 (`isTerminalRateLimitError` in pi's provider code) — so the child stops and the
@@ -45,6 +49,21 @@ names no fallback value at all; it only points at the
   cleanly (model switch = the recovery, thinking mismatch reported as a config
   problem — no warn loop, no success claim); AGENTS.md must be **agnostic**
   about fallback values (user directive): docs point at config.json only.
+  Round 3 (task brief fallback-freetier-detect): the detector must also match
+  the pane failure observed in production — `Auto-compaction failed: Turn
+  prefix summarization failed: 403:` followed by
+  `{"type":"FreeTierError",…}` — which wedges the child exactly like the
+  429 but no-opped the helper (`no FreeUsageLimitError in …`), forcing a
+  manual `/model`. Never speculative must hold: a healthy pane still no-ops,
+  the `…-free` id still does not count as "already on", the delimited-token
+  status-bar probe is untouched; user-facing messages must describe both
+  detected failure kinds; spec + AGENTS.md detection text updated; tests
+  extended (403 pane, healthy-pane negative); full suite green; no
+  fallback-mechanics redesign. Deduced: the JSON error type sits on its own
+  line (the `403:` is on the previous line), so the type name alone is the
+  signature — same shape as the existing `FreeUsageLimitError` alternative.
+  Assumed: no extra `403 + free-tier wording` alternative — it would repeat
+  the speculative-429 audit note without an observed case. Open: none.
 - **Deduced** (verified against the installed pi 0.87.1 in scratch tmux panes,
   including a full end-to-end recovery of a really erroring child):
   - `/model <provider/model>` switches a running TUI directly (no picker) and
@@ -135,6 +154,18 @@ names no fallback value at all; it only points at the
    "`max` is the top level …" reasoning); they point at the
    `taskLevels.fallbackModel` / `taskLevels.fallbackThinking` entries in
    `config.json` as the single source of truth. [REQ-16] pins this.
+10. **Detection covers both free-provider failure kinds; the messages say
+    so** (round 3) — `_FALLBACK_ERROR_RE` gains the `FreeTierError` JSON
+    type next to `FreeUsageLimitError` and the 429-with-rate-limit-wording
+    alternative: one seam, one bounded pane scan, both kinds, no second
+    detector. The user-facing strings stop naming only the first kind: the
+    no-op path prints "no free-provider failure (FreeUsageLimitError/429,
+    FreeTierError/403) in …", and the no-configured-fallback die says
+    "free-provider failure detected in …" instead of "free usage limit
+    detected" — [REQ-17] detection, [REQ-18] wording. Function names
+    (`pane_has_free_limit_error`) stay: "free limit" reads as the family of
+    free-provider failures, and renaming would ripple through callers,
+    tests, and AGENTS.md for no behavioural gain.
 
 ## Entities
 
@@ -147,7 +178,9 @@ names no fallback value at all; it only points at the
   - `pane_last_line <task>` — last non-empty line of the task's pane (pi's
     status bar), empty when the session is not running;
   - `pane_has_free_limit_error <task> [lines]` — pane-tail match against
-    `FreeUsageLimitError` or a 429 with rate-limit wording;
+    either free-provider failure: `FreeUsageLimitError` (HTTP 429 quota) or
+    `FreeTierError` (HTTP 403 free-tier rejection), or an HTTP 429 next to
+    rate-limit wording (decision 10);
   - `pane_shows_model <task> <model>` — status-bar match on the model id
     (pi renders the part after the final `/`), as a delimited token per
     decision 7 (a strict prefix id does not collide);
@@ -164,7 +197,7 @@ names no fallback value at all; it only points at the
   switch itself cannot be confirmed.
 - **`specs/free-limit-fallback/`** (new) — this design + the feature file.
 - **`tests/free-limit-fallback.test.sh`** (new) — one test per
-  `[REQ-1]`…`[REQ-13]` plus a supplementary popup-swallow regression,
+  `[REQ-1]`…`[REQ-18]` plus a supplementary popup-swallow regression,
   fake-tmux sandbox (no real session touched).
 - **`AGENTS.md`** — "Child model and thinking levels" section documents the
   fallback entries and the helper, value-agnostically (decision 9, [REQ-16]).
@@ -229,6 +262,15 @@ flowchart TD
       shipped-value drift, stale `fallbackThinking`) → GREEN
 - [x] Full suite green + shellcheck after round 2
 - [x] Code audit pass, round 2 (below)
+- [x] Round 3 (fallback-freetier-detect): specs for [REQ-17]/[REQ-18] written
+      first → RED (403/`FreeTierError` pane undetected, single-kind no-op
+      message) → GREEN (regex alternative + message rewording, decision 10)
+- [x] Full suite green + shellcheck after round 3 — including the sync of
+      `tests/task-levels.test.sh`, `specs/child-task-levels/*`, and the
+      AGENTS.md level table to config retune 565bd68 (red on development
+      before this task: that commit retuned config.json without updating
+      its pinned expectations)
+- [x] Code audit pass, round 3 (below)
 
 ## Strengths / Weaknesses
 
@@ -349,5 +391,53 @@ rationale above.
      free-limit error; a stale `Error: Unknown thinking level` line can only
      cause a conservative warn (never a false success) — recorded under
      weaknesses 3 instead of adding tail-since-send bookkeeping.
+- **Recommendation strength**: Speculative for all three; audit verdict — no
+  architectural friction detected, ship it.
+
+## Code audit, round 3 (fallback-freetier-detect, post-implementation)
+
+Independent pass per the `code-auditor` skill: the feature file and the
+changed sources (`scripts/_sub-common.sh`, `scripts/sub-fallback.sh`,
+`AGENTS.md`, plus the `child-task-levels` sync artifacts) were re-read from
+disk, ignoring the conversational rationale above.
+
+- **Overview**: the change landed entirely inside the existing seam.
+  Detection grew one alternative arm in `_FALLBACK_ERROR_RE` — the single
+  internal seam every caller shares — so `sub-fallback.sh`'s detect gate and
+  both tests picked up the 403/`FreeTierError` kind without touching their
+  structure; `pane_shows_model` (delimited token), the already-on guard, and
+  the send/confirm flow have **no diff**, so "never speculative" and the
+  status-bar semantics are preserved structurally, not just by test. The two
+  user-facing strings that describe detection (no-op info, no-fallback die)
+  were reworded; the messages that do not name failure kinds (already-on,
+  switched, loud failure) were correctly left alone. The [REQ-n] chain stayed
+  1:1 with the tests: 18 scenarios ↔ 18 `run` lines, plus the one
+  supplementary popup regression.
+- **Files**: `scripts/_sub-common.sh` (`_FALLBACK_ERROR_RE` + comments),
+  `scripts/sub-fallback.sh` (header, no-op info, no-fallback die),
+  `specs/free-limit-fallback/*`, `tests/free-limit-fallback.test.sh`
+  (`seed_free_tier_error`, `t_req17_*`, `t_req18_*`), `AGENTS.md`; second
+  commit: `tests/task-levels.test.sh`, `specs/child-task-levels/*`,
+  AGENTS.md level table (sync to config retune 565bd68).
+- **Problem / Solution / Benefits**: no friction found — the detector is a
+  flat signature list in one constant; adding a kind is one arm plus one
+  fixture, and the deletion test still holds (removing the seam pushes the
+  scan into every caller). The `child-task-levels` sync is expectation
+  follow-up to the user's own config retune, zero behaviour change.
+- **Less valuable improvements** (noted, deliberately not done):
+  1. The no-op message hardcodes the two signatures as prose next to a
+     regex that encodes them — two places that must move together when a
+     third kind appears. Deriving the message from one shared list would
+     couple them, at the cost of shell string-building for a human-readable
+     line; today both names are pinned by [REQ-18]'s test, so drift of the
+     *existing* kinds is caught.
+  2. `pane_has_free_limit_error` now detects a free-*tier* rejection as
+     well as the usage limit; a `pane_has_provider_failure` alias would
+     match the new message vocabulary but ripples through callers, tests,
+     and AGENTS.md for zero behaviour gain (decision 10). *Worth exploring*
+     only if the family gains a kind the word "limit" cannot stretch to.
+  3. No `403 + free-tier wording` alternative was added alongside the
+     `FreeTierError` type name — a generalisation with no observed case,
+     exactly the speculative-value note from round 1.
 - **Recommendation strength**: Speculative for all three; audit verdict — no
   architectural friction detected, ship it.

@@ -376,24 +376,27 @@ inherits `defaultThinkingLevel` / `modelThinkingLevels` / `defaultProjectTrust`
 from the global pi settings instead — no config problem can break a spawn.
 Spec: `specs/child-task-levels/`, tests: `tests/task-levels.test.sh`.
 
-**Free-provider fallback.** The free provider behind `easy`/`standard`
+**Free-provider fallback.** The free provider behind `easy`
 (`opencode-zen-free/mimo-v2.6-flash-free`) can exhaust its quota and answer
 every request with `FreeUsageLimitError` (HTTP 429); pi treats that error as
-terminal (no retry), so the child stalls. `config.json` names the recovery
-for exactly that case, inside the same `taskLevels` section: the entries
+terminal (no retry), so the child stalls. A second free-provider rejection
+wedges a child the same way: pi's compaction/summarization calls answered
+with HTTP 403 `FreeTierError` block auto-compaction and leave the child
+stuck. `config.json` names the recovery
+for exactly those cases, inside the same `taskLevels` section: the entries
 `taskLevels.fallbackModel` (the model to switch a stuck child to) and
 `taskLevels.fallbackThinking` (the thinking level to leave it on). Those two
 entries are the **single source of truth** for the fallback values — this
 file deliberately names no fallback model or level; edit `config.json` to
 retune them.
 
-When a child is stuck on that error, recover it with:
+When a child is stuck on one of those failures, recover it with:
 
 ```bash
 "$SCRIPTS/sub-fallback.sh" <task>
 ```
 
-The helper detects the error in the child's pane (it never switches
+The helper detects either failure in the child's pane (it never switches
 speculatively), drives `/model <fallbackModel>` into the running child through
 the verified tmux send, waits until the child's status bar shows the model id
 as a delimited token (an id that merely extends it does not count as

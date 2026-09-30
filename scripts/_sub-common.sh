@@ -330,11 +330,14 @@ pane_tail() { # $1=task $2=lines
   fi
 }
 
-# Signature of pi's free-provider usage-limit failure in a pane: the JSON
-# error type, or an HTTP 429 next to rate-limit wording. Deliberately textual
-# (there is no other channel into a running TUI), so callers scan a bounded
-# pane window instead of the whole scrollback.
-_FALLBACK_ERROR_RE='FreeUsageLimitError|(^|[^0-9])429([^0-9]|$).*([Rr]ate[ -]?limit|[Tt]oo [Mm]any [Rr]equests)'
+# Signature of pi's free-provider failures in a pane: the JSON error type of
+# either kind — FreeUsageLimitError (HTTP 429 quota exhaustion, terminal for
+# pi) or FreeTierError (HTTP 403 rejecting the free tier, which wedges the
+# child by blocking pi's compaction/summarization calls) — or an HTTP 429
+# next to rate-limit wording. Deliberately textual (there is no other
+# channel into a running TUI), so callers scan a bounded pane window instead
+# of the whole scrollback.
+_FALLBACK_ERROR_RE='FreeUsageLimitError|FreeTierError|(^|[^0-9])429([^0-9]|$).*([Rr]ate[ -]?limit|[Tt]oo [Mm]any [Rr]equests)'
 
 # Echo the last non-empty line currently shown in the task's pane — pi draws
 # its status bar (path, token stats, model • thinking) there. Nothing when
@@ -347,7 +350,7 @@ pane_last_line() { # $1=task
     | awk 'NF { last=$0 } END { if (last != "") print last }'
 }
 
-# True when the task's pane tail shows the free-limit error.
+# True when the task's pane tail shows a free-provider failure.
 pane_has_free_limit_error() { # $1=task [$2=scan lines]
   local task=$1 lines=${2:-50}
   pane_tail "$task" "$lines" | grep -qE -- "$_FALLBACK_ERROR_RE"
