@@ -12,8 +12,8 @@ initial defaults:
 
 | Level | For | Model | Thinking |
 |---|---|---|---|
-| `easy` | chores, trims, config/docs edits | `opencode-zen-free/mimo-v2.6-flash-free` | `medium` |
-| `standard` (default) | features/bug fixes, full specs+TDD flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
+| `easy` | chores, trims, config/docs edits | `opencode-zen-free/mimo-v2.6-flash-free` | `high` |
+| `standard` (default) | features/bug fixes, full specs+TDD flow | `opencode-go/mimo-v2.6-flash` | `xhigh` |
 | `hard` | architecture, root-cause, long-haul work | `opencode-go/deepseek-v4.1-flash` | `max` |
 
 Retuning the trade-off (e.g. moving a model, changing a thinking cap) is a

@@ -358,8 +358,8 @@ the initial values:
 
 | Level | When to use | Model | Thinking |
 |---|---|---|---|
-| `easy` | chores, trims, config/docs edits, small fixes | `opencode-zen-free/mimo-v2.6-flash-free` | `medium` |
-| `standard` (default) | features / bug fixes with the full specs flow | `opencode-zen-free/mimo-v2.6-flash-free` | `xhigh` |
+| `easy` | chores, trims, config/docs edits, small fixes | `opencode-zen-free/mimo-v2.6-flash-free` | `high` |
+| `standard` (default) | features / bug fixes with the full specs flow | `opencode-go/mimo-v2.6-flash` | `xhigh` |
 | `hard` | architecture, root-cause analysis, long-haul work | `opencode-go/deepseek-v4.1-flash` | `max` |
 
 Pick the level when writing the brief and pass it at spawn:

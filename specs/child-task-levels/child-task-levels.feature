@@ -20,13 +20,13 @@ Feature: Per-task difficulty levels for child model and thinking (sub-spawn)
     Given the repository's root config.json with its initial defaults in
       the "taskLevels" section
     When resolve_child_launch_flags is called with no level, model, or thinking
-    Then it echoes "--model opencode-zen-free/mimo-v2.6-flash-free --thinking xhigh"
+    Then it echoes "--model opencode-go/mimo-v2.6-flash --thinking xhigh"
     And exits 0 without warnings
 
   Scenario: Named levels select their configured mapping [REQ-2]
     Given the repository's root config.json with its initial defaults
     When resolve_child_launch_flags is called with level "easy"
-    Then it echoes "--model opencode-zen-free/mimo-v2.6-flash-free --thinking medium"
+    Then it echoes "--model opencode-zen-free/mimo-v2.6-flash-free --thinking high"
     When resolve_child_launch_flags is called with level "hard"
     Then it echoes "--model opencode-go/deepseek-v4.1-flash --thinking max"
 
