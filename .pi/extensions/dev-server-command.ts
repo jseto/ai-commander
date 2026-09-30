@@ -47,7 +47,7 @@ import {
 	type TelegramBridge,
 	type TelegramCommandContext,
 	type TelegramSectionCallbackContext,
-} from "./telegram-bridge.ts";
+} from "./lib/telegram-bridge.ts";
 
 const execFileAsync = promisify(execFile);
 

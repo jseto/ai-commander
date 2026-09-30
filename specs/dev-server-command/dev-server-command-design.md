@@ -12,8 +12,9 @@ intranet and Tailscale links as clickable Telegram HTML links.
 ## Install scope: a project extension
 
 The command ships **inside this repository** as a pi project extension:
-`.pi/extensions/dev-server-command.ts` (with `lib/` and `telegram-bridge.ts`
-beside it) [REQ-16]. Pi loads `<project>/.pi/extensions/` only for sessions of
+`.pi/extensions/dev-server-command.ts` (all helpers under
+`.pi/extensions/lib/` — pi treats every direct file at the extension root as an
+extension) [REQ-16]. Pi loads `<project>/.pi/extensions/` only for sessions of
 that project, so the command exists in mu-commander sessions and nowhere else -
 no runtime session gate is needed, and no global pi-config change is involved.
 The project root used for scoping is derived from the extension's own location
@@ -56,7 +57,7 @@ removed with this change (`lib/repo-scope.ts` deleted).
   `@llblab/pi-telegram`: pi resolves an extension's imports from the
   extension's own directory, this repository has no `node_modules`, and the
   package is installed only in the global agent directory (verified with pi's
-  own jiti loader). `telegram-bridge.ts` isolates that seam behind a small
+  own jiti loader). `lib/telegram-bridge.ts` isolates that seam behind a small
   `TelegramBridge` interface; the rest of the extension depends only on the
   interface and is fake-testable. See "pi-telegram access" below for the
   concrete strategy.
@@ -66,7 +67,7 @@ removed with this change (`lib/repo-scope.ts` deleted).
 
 ## pi-telegram access
 
-`telegram-bridge.ts` resolves and dynamically imports the **public**
+`lib/telegram-bridge.ts` resolves and dynamically imports the **public**
 pi-telegram API from the global agent install (`PI_CODING_AGENT_DIR`, default
 `~/.pi/agent`): `createRequire(<agentDir>/…).resolve("@llblab/pi-telegram/commands|delivery|outbound")`
 honors the package exports map, and the resolved files are imported with
@@ -214,7 +215,7 @@ flowchart LR
     TS["tmux-send.ts\nverified send-line"]
     RU["reachable-url.ts\ndetectInternalUrl / detectTailscaleUrl"]
   end
-  BR["telegram-bridge.ts"]
+  BR["lib/telegram-bridge.ts"]
   subgraph tg ["pi-telegram (global install)"]
     SV["registerTelegramCommand / sendTelegramView / editTelegramView"]
     SX["registerTelegramSection / getTelegramSectionDiagnostics"]
@@ -239,7 +240,7 @@ machine, and the in-flight set. Every dependency is injected (`listChildren`,
 `now`, `sleep`), so the whole flow is exercised with fakes and no tmux,
 `/proc`, network, or Telegram.
 
-- `telegram-bridge.ts` - the `TelegramBridge` interface and the concrete
+- `lib/telegram-bridge.ts` - the `TelegramBridge` interface and the concrete
   pi-telegram access (command, section, views, callback data); the only file
   that knows how to reach the bridge.
 - `child-sessions.ts` - `listChildSessions`: task-name parsing plus exec

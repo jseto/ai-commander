@@ -9,7 +9,7 @@ import {
 	type TelegramApi,
 	type TelegramCommandRegistration,
 	type TelegramSectionRegistration,
-} from "../../.pi/extensions/telegram-bridge.ts";
+} from "../../.pi/extensions/lib/telegram-bridge.ts";
 
 const REGISTRATION: TelegramCommandRegistration = {
 	name: "mudevserver",

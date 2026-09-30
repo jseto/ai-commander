@@ -23,7 +23,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { DeliveryTarget, DevServerView, ViewHandle } from "./lib/dev-server-command-core.ts";
+import type { DeliveryTarget, DevServerView, ViewHandle } from "./dev-server-command-core.ts";
 
 /** The slice of pi-telegram's Telegram command context the handler uses. */
 export interface TelegramCommandContext {

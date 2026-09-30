@@ -8,7 +8,7 @@ import type {
 	TelegramBridge,
 	TelegramCommandRegistration,
 	TelegramSectionRegistration,
-} from "../../.pi/extensions/telegram-bridge.ts";
+} from "../../.pi/extensions/lib/telegram-bridge.ts";
 
 /**
  * The cross-repo seam, exercised through the production wiring
