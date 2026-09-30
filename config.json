@@ -17,7 +17,7 @@
       "hard": {
         "description": "Architecture, root-cause analysis, long-haul work.",
         "model": "opencode-go/deepseek-v4.1-flash",
-        "thinking": "xhigh"
+        "thinking": "max"
       }
     }
   }

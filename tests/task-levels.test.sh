@@ -84,8 +84,8 @@ t_req2_named_levels_select_their_mapping() {
   [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking medium" ] \
     || fail "easy should resolve to mimo @ medium, got: $OUT"
   resolve hard "" ""
-  [ "$OUT" = "--model opencode-go/deepseek-v4.1-flash --thinking xhigh" ] \
-    || fail "hard should resolve to deepseek @ xhigh, got: $OUT"
+  [ "$OUT" = "--model opencode-go/deepseek-v4.1-flash --thinking max" ] \
+    || fail "hard should resolve to deepseek @ max, got: $OUT"
 }
 
 t_req3_explicit_flags_beat_the_level_mapping() {

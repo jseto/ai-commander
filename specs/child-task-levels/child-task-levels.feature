@@ -5,7 +5,7 @@ Feature: Per-task difficulty levels for child model and thinking (sub-spawn)
   mu-commander checkout, inside the namespaced "taskLevels" top-level
   section, seeded with the orchestrator's initial defaults
   (easy = mimo free @ medium, standard = mimo free @ xhigh, hard =
-  deepseek-v4.1-flash @ xhigh, default = standard). config.json is a generic
+  deepseek-v4.1-flash @ max, default = standard). config.json is a generic
   root-level file: future general settings live in sibling top-level keys,
   and level resolution must ignore them — an unknown sibling key never breaks
   a spawn. Resolution is defensive:
@@ -28,7 +28,7 @@ Feature: Per-task difficulty levels for child model and thinking (sub-spawn)
     When resolve_child_launch_flags is called with level "easy"
     Then it echoes "--model opencode-zen-free/mimo-v2.6-flash-free --thinking medium"
     When resolve_child_launch_flags is called with level "hard"
-    Then it echoes "--model opencode-go/deepseek-v4.1-flash --thinking xhigh"
+    Then it echoes "--model opencode-go/deepseek-v4.1-flash --thinking max"
 
   Scenario: Explicit flags beat the level mapping [REQ-3]
     Given the repository's root config.json with its initial defaults
