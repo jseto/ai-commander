@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createWiredCore } from "../../.pi/extensions/dev-server-command.ts";
+import { createWiredCore, TAP_SURFACE_ID } from "../../.pi/extensions/dev-server-command.ts";
 import type { RunExec } from "../../.pi/extensions/lib/child-sessions.ts";
 import type { DevServerView, ViewHandle } from "../../.pi/extensions/lib/dev-server-command-core.ts";
 import type {
 	TelegramBridge,
 	TelegramCommandRegistration,
+	TelegramSectionRegistration,
 } from "../../.pi/extensions/telegram-bridge.ts";
 
 /**
@@ -78,17 +79,25 @@ function createRun(config: {
 }
 
 function createRecordingBridge() {
-	const views: string[] = [];
+	const views: DevServerView[] = [];
 	const edits: string[] = [];
 	const errors: unknown[] = [];
 	const registrations: TelegramCommandRegistration[] = [];
+	const sections: TelegramSectionRegistration[] = [];
 	const bridge: TelegramBridge = {
 		registerCommand: async (registration) => {
 			registrations.push(registration);
 			return () => {};
 		},
+		registerSection: async (registration) => {
+			sections.push(registration);
+			return () => {};
+		},
+		// Like production: callbacks exist only for the registered tap surface.
+		sectionCallbackData: async (sectionId, action, payload) =>
+			sectionId === TAP_SURFACE_ID ? `section:3:${action}:${payload}` : null,
 		sendView: async (view: DevServerView) => {
-			views.push(view.text);
+			views.push(view);
 			return "h1" as ViewHandle;
 		},
 		editView: async (handle: ViewHandle, view: DevServerView) => {
@@ -99,7 +108,7 @@ function createRecordingBridge() {
 			errors.push(error);
 		},
 	};
-	return { bridge, views, edits, errors, registrations };
+	return { bridge, views, edits, errors, registrations, sections };
 }
 
 /** The two pools the fake spans: a mu-commander and a riak-t worktree. */
@@ -129,7 +138,8 @@ describe("cross-repo child menu through the production wiring", () => {
 
 		assert.deepEqual(errors, [], "the wiring must not record errors");
 		assert.equal(views.length, 1, "one menu message");
-		const text = views[0]!;
+		const view = views[0]!;
+		const text = view.text;
 		assert.match(text, /<b>1\.<\/b> <code>alpha<\/code>/);
 		assert.match(text, /repo <code>mu-commander<\/code>/);
 		assert.match(text, /<b>2\.<\/b> <code>riak-166-driver-info-view<\/code>/);
@@ -137,6 +147,19 @@ describe("cross-repo child menu through the production wiring", () => {
 		assert.match(text, /\/pool\/riak-t-f778a7\/1\/riak-t/);
 		assert.doesNotMatch(text, /No child session is running/);
 		assert.doesNotMatch(text, /pi-main/);
+		// The tap keyboard travels through the production wiring: the bridge
+		// builds it only for the registered tap surface id [REQ-19].
+		assert.deepEqual(view.replyMarkup, {
+			inline_keyboard: [
+				[{ text: "⚫ alpha · mu-commander", callback_data: "section:3:select:alpha" }],
+				[
+					{
+						text: "⚫ riak-166-driver-info-view · riak-t",
+						callback_data: "section:3:select:riak-166-driver-info-view",
+					},
+				],
+			],
+		});
 	});
 
 	it("asks the selected child of another repository through the verified send. [REQ-18]", async () => {

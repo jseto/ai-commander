@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
 	childInstruction,
 	createDevServerCore,
+	SELECT_ACTION,
 	type DeliveryTarget,
 	type DevServerCore,
 	type DevServerCoreDeps,
@@ -19,12 +20,14 @@ import type { ListeningProcess } from "../../.pi/extensions/lib/listening-ports.
 import { sendLine } from "../../.pi/extensions/lib/tmux-send.ts";
 import {
 	COMMAND_NAME,
+	TAP_SURFACE_ID,
 	registerDevServerSurfaces,
 	type PiExtensionApi,
 } from "../../.pi/extensions/dev-server-command.ts";
 import type {
 	TelegramBridge,
 	TelegramCommandRegistration,
+	TelegramSectionRegistration,
 } from "../../.pi/extensions/telegram-bridge.ts";
 import { resolveAgentDir } from "../../.pi/extensions/telegram-bridge.ts";
 
@@ -65,6 +68,7 @@ interface HarnessOptions {
 	sendLine?: (session: string, text: string) => Promise<boolean>;
 	urls?: Record<number, ReachableUrls>;
 	deliver?: boolean;
+	buttonCallbackData?: DevServerCoreDeps["buttonCallbackData"];
 	waitMs?: number;
 	pollMs?: number;
 }
@@ -110,6 +114,7 @@ function createHarness(options: HarnessOptions = {}) {
 			deliveries.push({ kind: "edit", handle: String(handle), view, target: {} });
 			return handle;
 		},
+		buttonCallbackData: options.buttonCallbackData,
 		now: () => time,
 		sleep: async (ms) => {
 			sleeps.push(ms);
@@ -170,8 +175,14 @@ interface RegisteredCommand {
 	disposed: boolean;
 }
 
-function createFakeBridge() {
+interface RegisteredSection {
+	registration: TelegramSectionRegistration;
+	disposed: boolean;
+}
+
+function createFakeBridge(options: { failSection?: boolean } = {}) {
 	const commands: RegisteredCommand[] = [];
+	const sections: RegisteredSection[] = [];
 	const errors: unknown[] = [];
 	const bridge: TelegramBridge = {
 		registerCommand: async (registration) => {
@@ -181,6 +192,22 @@ function createFakeBridge() {
 				entry.disposed = true;
 			};
 		},
+		registerSection: async (registration) => {
+			if (options.failSection) {
+				throw new Error("Telegram section registry not available.");
+			}
+			const entry: RegisteredSection = { registration, disposed: false };
+			sections.push(entry);
+			return () => {
+				entry.disposed = true;
+			};
+		},
+		// Mirrors production: a callback exists only while the section for the
+		// requested id is registered (the registry token lives with it).
+		sectionCallbackData: async (sectionId, action, payload) =>
+			sections.some((entry) => !entry.disposed && entry.registration.id === sectionId)
+				? `section:7:${action}:${payload}`
+				: null,
 		sendView: async () => null,
 		editView: async (handle) => handle,
 		recordError: (_category, error) => {
@@ -190,9 +217,18 @@ function createFakeBridge() {
 	return {
 		bridge,
 		commands,
+		sections,
 		errors,
 		active: () => commands.filter((command) => !command.disposed),
+		activeSections: () => sections.filter((section) => !section.disposed),
 	};
+}
+
+/** Let a dispatched (fire-and-forget) flow run until `done` or give up. */
+async function settle(done: () => boolean, rounds = 100): Promise<void> {
+	for (let round = 0; round < rounds && !done(); round += 1) {
+		await new Promise((resolve) => setImmediate(resolve));
+	}
 }
 
 describe("Telegram /mudevserver command for mu-commander child pi sessions", () => {
@@ -508,6 +544,7 @@ describe("Telegram /mudevserver command for mu-commander child pi sessions", () 
 			handle: async (_target, args) => {
 				handled.push(args);
 			},
+			renderMenu: async () => ({ text: "menu", parseMode: "html" }),
 			stop: () => {},
 		};
 		const fake = createFakeBridge();
@@ -606,5 +643,249 @@ describe("Telegram /mudevserver command for mu-commander child pi sessions", () 
 		assert.match(text, /port <code>4173<\/code>/);
 		assert.match(text, /<a href="http:\/\/lan:4173">intranet<\/a>/);
 		assert.match(text, /<a href="http:\/\/ts:4173">Tailscale<\/a>/);
+	});
+
+	it("Offer each child as a tap button on the menu. [REQ-19]", async () => {
+		const harness = createHarness({
+			children: [ALPHA, BETA],
+			discover: [[listener(5173, "/tree/beta")]],
+			urls: { 5173: { intranet: null, tailscale: null } },
+			buttonCallbackData: (task) => `section:7:select:${task}`,
+		});
+
+		await harness.core.handle({}, "");
+
+		const view = harness.deliveries[0]!.view;
+		assert.deepEqual(view.replyMarkup, {
+			inline_keyboard: [
+				[{ text: "⚫ alpha · alpha-repo", callback_data: "section:7:select:alpha" }],
+				[{ text: "🟢 beta · beta-repo · :5173", callback_data: "section:7:select:beta" }],
+			],
+		});
+		assert.match(view.text, /Tap a button/);
+
+		// No child: the menu carries no keyboard at all.
+		const empty = createHarness({ children: [] });
+		await empty.core.handle({}, "");
+		assert.equal(empty.deliveries[0]!.view.replyMarkup, undefined);
+	});
+
+	it("Run the same flow when a menu button is tapped. [REQ-20]", async () => {
+		const { pi, fire } = createFakePi();
+		const harness = createHarness({
+			children: [ALPHA],
+			discover: [[], [], [listener(5173, "/tree/alpha")]],
+			urls: { 5173: { intranet: "http://lan:5173", tailscale: null } },
+			buttonCallbackData: (task) => `section:7:select:${task}`,
+		});
+		const fake = createFakeBridge();
+		registerDevServerSurfaces(pi, harness.core, fake.bridge);
+		await fire("session_start");
+
+		// The menu is on screen with its keyboard.
+		await harness.core.handle({}, "");
+		const menu = harness.deliveries[0]!;
+		assert.equal(menu.view.replyMarkup?.inline_keyboard.length, 1);
+
+		const verdict = await fake.activeSections()[0]!.registration.handleCallback({
+			sectionId: TAP_SURFACE_ID,
+			chatId: 1,
+			messageId: 42,
+			action: SELECT_ACTION,
+			payload: "alpha",
+			answerCallback: async () => {},
+		});
+		assert.equal(verdict, "handled");
+		await settle(() => harness.deliveries.some((entry) => entry.kind === "edit"));
+
+		// The tap runs the identical typed-selection flow: verified ask first…
+		assert.deepEqual(
+			harness.lines.map((line) => line.session),
+			["pi-alpha"],
+		);
+		assert.equal(harness.lines[0]!.text, childInstruction("alpha"));
+		// …delivered as one logical message of its own, not the menu's [REQ-20].
+		const sends = harness.deliveries.filter((entry) => entry.kind === "send");
+		const edits = harness.deliveries.filter((entry) => entry.kind === "edit");
+		assert.equal(sends.length, 2, "menu plus one flow message");
+		assert.equal(edits.length, 1);
+		assert.equal(edits[0]!.handle, sends[1]!.handle, "the flow refreshes its own message");
+		assert.notEqual(edits[0]!.handle, menu.handle, "the menu message is never edited");
+		assert.match(edits[0]!.view.text, /dev server up/);
+		assert.ok(menu.view.replyMarkup, "the menu keeps its list and buttons");
+	});
+
+	it("Answer the button tap before any selection work starts. [REQ-21]", async () => {
+		const { pi, fire } = createFakePi();
+		const events: string[] = [];
+		const core: DevServerCore = {
+			handle: async () => {
+				events.push("flow");
+			},
+			renderMenu: async () => ({ text: "menu", parseMode: "html" }),
+			stop: () => {},
+		};
+		const fake = createFakeBridge();
+		registerDevServerSurfaces(pi, core, fake.bridge);
+		await fire("session_start");
+
+		const verdict = await fake.activeSections()[0]!.registration.handleCallback({
+			sectionId: TAP_SURFACE_ID,
+			chatId: 1,
+			action: SELECT_ACTION,
+			payload: "alpha",
+			answerCallback: async () => {
+				events.push("answer");
+			},
+		});
+
+		assert.equal(verdict, "handled");
+		assert.deepEqual(events, ["answer", "flow"]);
+	});
+
+	it("passes a callback it does not own back to pi-telegram", async () => {
+		const { pi, fire } = createFakePi();
+		const events: string[] = [];
+		const core: DevServerCore = {
+			handle: async () => {
+				events.push("flow");
+			},
+			renderMenu: async () => ({ text: "menu", parseMode: "html" }),
+			stop: () => {},
+		};
+		const fake = createFakeBridge();
+		registerDevServerSurfaces(pi, core, fake.bridge);
+		await fire("session_start");
+
+		const verdict = await fake.activeSections()[0]!.registration.handleCallback({
+			sectionId: TAP_SURFACE_ID,
+			chatId: 1,
+			action: "open",
+			payload: "",
+			answerCallback: async () => {
+				events.push("answer");
+			},
+		});
+
+		assert.equal(verdict, "pass");
+		assert.deepEqual(events, [], "no answer and no flow for an unknown action");
+	});
+
+	it("Report a tap for a child that died since the menu was sent. [REQ-22]", async () => {
+		const { pi, fire } = createFakePi();
+		const children = [ALPHA, BETA];
+		const harness = createHarness({
+			children,
+			discover: [[]],
+			buttonCallbackData: (task) => `section:7:select:${task}`,
+		});
+		const fake = createFakeBridge();
+		registerDevServerSurfaces(pi, harness.core, fake.bridge);
+		await fire("session_start");
+		await harness.core.handle({}, "");
+		assert.equal(harness.deliveries[0]!.view.replyMarkup?.inline_keyboard.length, 2);
+
+		// alpha's tmux session ends while the menu stays on screen.
+		children.splice(children.indexOf(ALPHA), 1);
+		await fake.activeSections()[0]!.registration.handleCallback({
+			sectionId: TAP_SURFACE_ID,
+			chatId: 1,
+			messageId: 42,
+			action: SELECT_ACTION,
+			payload: "alpha",
+			answerCallback: async () => {},
+		});
+		await settle(() => harness.deliveries.length >= 2);
+
+		assert.equal(harness.deliveries.length, 2, "one error message, no flow message");
+		assert.equal(harness.deliveries[1]!.kind, "send");
+		assert.match(harness.deliveries[1]!.view.text, /No child session matches <code>alpha<\/code>/);
+		assert.equal(harness.lines.length, 0, "no instruction is sent to any child");
+		assert.equal(harness.discoverCalls.length, 1, "no port polling starts");
+	});
+
+	it("Register the tap surface with the command and dispose both on shutdown. [REQ-23]", async () => {
+		const { pi, fire } = createFakePi();
+		const core: DevServerCore = {
+			handle: async () => {},
+			renderMenu: async () => ({ text: "menu", parseMode: "html" }),
+			stop: () => {},
+		};
+		const fake = createFakeBridge();
+		registerDevServerSurfaces(pi, core, fake.bridge);
+
+		assert.equal(fake.active().length, 0);
+		assert.equal(fake.activeSections().length, 0);
+
+		await fire("session_start");
+		assert.equal(fake.active().length, 1);
+		assert.equal(fake.activeSections().length, 1);
+		const section = fake.activeSections()[0]!.registration;
+		assert.equal(section.id, TAP_SURFACE_ID);
+		assert.equal(section.label, "🖥 Dev server");
+		assert.equal((await section.render()).text, "menu", "the menu entry point renders the menu");
+
+		// A second session_start (reload) re-registers both without duplicating.
+		await fire("session_start");
+		assert.equal(fake.active().length, 1);
+		assert.equal(fake.activeSections().length, 1);
+		assert.equal(fake.commands.filter((command) => command.disposed).length, 1);
+		assert.equal(fake.sections.filter((entry) => entry.disposed).length, 1);
+
+		fire("session_shutdown");
+		assert.equal(fake.active().length, 0);
+		assert.equal(fake.activeSections().length, 0);
+	});
+
+	it("Keep a child whose button would not fit Telegram's callback limit. [REQ-25]", async () => {
+		// The bridge enforces this cap (see telegram-bridge.test.ts); the menu
+		// must degrade per child, not fail.
+		const longTask = "a-really-long-task-name-that-pushes-the-selection-past-the-64-byte-cap";
+		const long: ChildSession = {
+			task: longTask,
+			session: `pi-${longTask}`,
+			worktree: `/tree/${longTask}`,
+			repo: "big-repo",
+		};
+		const buttonCallbackData = (task: string) => {
+			const data = `section:7:select:${task}`;
+			return new TextEncoder().encode(data).byteLength <= 64 ? data : null;
+		};
+		const harness = createHarness({
+			children: [ALPHA, long],
+			discover: [[], []],
+			buttonCallbackData,
+			waitMs: 0,
+		});
+
+		await harness.core.handle({}, "");
+		const view = harness.deliveries[0]!.view;
+		assert.equal(view.replyMarkup?.inline_keyboard.length, 1, "only the fitting child has a button");
+		assert.equal(view.replyMarkup!.inline_keyboard[0]![0]!.callback_data, "section:7:select:alpha");
+		assert.ok(view.text.includes(longTask), "the over-long child is still listed");
+
+		await harness.core.handle({}, longTask);
+		assert.equal(harness.lines[0]?.session, `pi-${longTask}`, "typed selection still resolves it");
+	});
+
+	it("Keep the command alive when the tap surface cannot register. [REQ-26]", async () => {
+		const { pi, fire } = createFakePi();
+		const fake = createFakeBridge({ failSection: true });
+		const harness = createHarness({
+			children: [ALPHA],
+			buttonCallbackData: (task) =>
+				fake.bridge.sectionCallbackData(TAP_SURFACE_ID, SELECT_ACTION, task),
+		});
+		registerDevServerSurfaces(pi, harness.core, fake.bridge);
+
+		await fire("session_start");
+		assert.equal(fake.active().length, 1, "the command registered anyway");
+		assert.equal(fake.activeSections().length, 0);
+		assert.equal(fake.errors.length, 1, "one diagnostic records the section failure");
+
+		await harness.core.handle({}, "");
+		const menu = harness.deliveries[0]!;
+		assert.ok(menu.view.text.includes("alpha"), "the menu is still delivered");
+		assert.equal(menu.view.replyMarkup, undefined, "without a keyboard");
 	});
 });

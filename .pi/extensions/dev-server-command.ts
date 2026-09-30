@@ -2,7 +2,10 @@
  * Telegram `/mudevserver`: list the running child pi sessions of the
  * mu-commander orchestrator pattern, ask the selected one to start its
  * project's dev server, discover the port it binds, and deliver the
- * phone-reachable intranet and Tailscale links as HTML anchors.
+ * phone-reachable intranet and Tailscale links as HTML anchors. The menu
+ * offers each child as a tap button on an inline keyboard next to the typed
+ * selection [REQ-19]; a tap answers promptly and runs the identical flow
+ * [REQ-20][REQ-21].
  *
  * Wiring only: this file knows tmux and /proc; the flow lives in
  * `lib/dev-server-command-core.ts` and the pi-telegram surface in
@@ -15,8 +18,8 @@
  * lists every live `pi-<task>` child on the machine, whichever treehouse pool
  * its worktree belongs to, labeled with the child's repo [REQ-17].
  * Registration follows the deferred `session_start` pattern (pi-telegram binds
- * its registries after extension factories run) and is disposed on
- * `session_shutdown`.
+ * its registries after extension factories run) and disposes both the command
+ * and the section tap surface on `session_shutdown` [REQ-23].
  */
 
 import { execFile } from "node:child_process";
@@ -29,6 +32,7 @@ import {
 } from "./lib/child-sessions.ts";
 import {
 	createDevServerCore,
+	SELECT_ACTION,
 	type DeliveryTarget,
 	type DevServerCore,
 	type DevServerCoreDeps,
@@ -42,12 +46,19 @@ import {
 	createTelegramBridge,
 	type TelegramBridge,
 	type TelegramCommandContext,
+	type TelegramSectionCallbackContext,
 } from "./telegram-bridge.ts";
 
 const execFileAsync = promisify(execFile);
 
 export const COMMAND_NAME = "mudevserver";
 const COMMAND_EMOJI = "🖥";
+/**
+ * The pi-telegram section id behind the menu's tap buttons: a section is the
+ * package's managed callback surface (it answers the tap, then dispatches),
+ * registered beside the command [REQ-19][REQ-23].
+ */
+export const TAP_SURFACE_ID = "dev-server-command";
 
 /**
  * The slice of pi's `ExtensionAPI` this extension uses. Structural on purpose:
@@ -103,6 +114,11 @@ export function createWiredCore(options: WiredCoreOptions): DevServerCore {
 			options.bridge.sendView(view, target),
 		editView: (handle: ViewHandle, view: DevServerView) =>
 			options.bridge.editView(handle, view),
+		// The menu's tap buttons: built by the bridge from the registered
+		// section's token; null (no button for that child) when the tap
+		// surface cannot build a callback [REQ-19][REQ-25].
+		buttonCallbackData: (task) =>
+			options.bridge.sectionCallbackData(TAP_SURFACE_ID, SELECT_ACTION, task),
 		now: () => Date.now(),
 		sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 		waitMs: waitMsFromEnv(process.env),
@@ -111,8 +127,8 @@ export function createWiredCore(options: WiredCoreOptions): DevServerCore {
 }
 
 /**
- * Deferred registration of the command. Exported so tests can drive the
- * lifecycle with a fake pi and a recording bridge.
+ * Deferred registration of the command and its tap surface. Exported so tests
+ * can drive the lifecycle with a fake pi and a recording bridge.
  */
 export function registerDevServerSurfaces(
 	pi: PiExtensionApi,
@@ -120,10 +136,13 @@ export function registerDevServerSurfaces(
 	bridge: TelegramBridge,
 ): void {
 	let unregisterCommand: (() => void) | null = null;
+	let unregisterSection: (() => void) | null = null;
 
 	function dispose(): void {
 		unregisterCommand?.();
 		unregisterCommand = null;
+		unregisterSection?.();
+		unregisterSection = null;
 	}
 
 	function dispatch(target: DeliveryTarget, args: string): void {
@@ -136,7 +155,7 @@ export function registerDevServerSurfaces(
 
 	async function register(): Promise<void> {
 		// Re-register defensively across reload/session replacement: drop the
-		// previous handler before claiming the name again. The bridge resolves
+		// previous handlers before claiming the names again. The bridge resolves
 		// pi-telegram lazily, so registration is asynchronous.
 		dispose();
 		try {
@@ -150,6 +169,27 @@ export function registerDevServerSurfaces(
 		} catch (error) {
 			unregisterCommand = null;
 			bridge.recordError("dev-server-command", error, { phase: "register-command" });
+		}
+		// The tap surface: pi-telegram answers each tap through this section's
+		// callback context [REQ-21], then the exact typed-selection flow runs
+		// against the tapped task name [REQ-20]. A failure here must not take
+		// the command down [REQ-26].
+		try {
+			unregisterSection = await bridge.registerSection({
+				id: TAP_SURFACE_ID,
+				label: "🖥 Dev server",
+				order: 100,
+				render: () => core.renderMenu(),
+				handleCallback: async (ctx: TelegramSectionCallbackContext) => {
+					if (ctx.action !== SELECT_ACTION) return "pass";
+					await ctx.answerCallback();
+					dispatch({}, ctx.payload);
+					return "handled";
+				},
+			});
+		} catch (error) {
+			unregisterSection = null;
+			bridge.recordError("dev-server-command", error, { phase: "register-section" });
 		}
 	}
 

@@ -8,6 +8,7 @@ import {
 	resolveAgentDir,
 	type TelegramApi,
 	type TelegramCommandRegistration,
+	type TelegramSectionRegistration,
 } from "../../.pi/extensions/telegram-bridge.ts";
 
 const REGISTRATION: TelegramCommandRegistration = {
@@ -16,6 +17,13 @@ const REGISTRATION: TelegramCommandRegistration = {
 	emoji: "🖥",
 	showInMenu: true,
 	handler: () => {},
+};
+
+const SECTION: TelegramSectionRegistration = {
+	id: "dev-server-command",
+	label: "🖥 Dev server",
+	render: async () => ({ text: "menu", parseMode: "html" }),
+	handleCallback: async (): Promise<"handled" | "pass"> => "handled",
 };
 
 describe("pi-telegram bridge", () => {
@@ -32,6 +40,11 @@ describe("pi-telegram bridge", () => {
 				calls.push(`register:${registration.name}`);
 				return () => calls.push("dispose");
 			},
+			registerSection: (registration) => {
+				calls.push(`register-section:${registration.id}`);
+				return () => calls.push("dispose-section");
+			},
+			getSectionToken: (id) => (id === "dev-server-command" ? "4" : null),
 			sendView: async () => {
 				calls.push("send");
 				return "h1";
@@ -47,13 +60,52 @@ describe("pi-telegram bridge", () => {
 		const bridge = createTelegramBridge({ load: async () => api, warn: () => {} });
 
 		const dispose = await bridge.registerCommand(REGISTRATION);
+		const disposeSection = await bridge.registerSection(SECTION);
 		assert.equal(await bridge.sendView({ text: "t", parseMode: "html" }, {}), "h1");
 		assert.equal(await bridge.editView("h1", { text: "t", parseMode: "html" }), "h1");
 		bridge.recordError("dev-server-command", new Error("boom"));
 		await new Promise((resolve) => setImmediate(resolve));
 		dispose();
+		disposeSection();
 
-		assert.deepEqual(calls, ["register:mudevserver", "send", "edit", "error:dev-server-command", "dispose"]);
+		assert.deepEqual(calls, [
+			"register:mudevserver",
+			"register-section:dev-server-command",
+			"send",
+			"edit",
+			"error:dev-server-command",
+			"dispose",
+			"dispose-section",
+		]);
+	});
+
+	it("builds selection callback data from the registry token and enforces the 64-byte cap. [REQ-25]", async () => {
+		const api: TelegramApi = {
+			registerCommand: () => () => {},
+			registerSection: () => () => {},
+			getSectionToken: (id) => (id === "dev-server-command" ? "4" : null),
+			sendView: async () => null,
+			editView: async (handle) => handle,
+			recordError: () => {},
+		};
+		const bridge = createTelegramBridge({ load: async () => api, warn: () => {} });
+
+		assert.equal(
+			await bridge.sectionCallbackData("dev-server-command", "select", "alpha"),
+			"section:4:select:alpha",
+		);
+		assert.equal(
+			await bridge.sectionCallbackData("unknown-section", "select", "alpha"),
+			null,
+			"no token, no callback",
+		);
+		const longTask =
+			"a-really-long-task-name-that-pushes-the-selection-past-the-64-byte-cap";
+		assert.equal(
+			await bridge.sectionCallbackData("dev-server-command", "select", longTask),
+			null,
+			"over Telegram's 64-byte callback cap",
+		);
 	});
 
 	it("propagates a registration failure so the wiring can record it", async () => {
@@ -62,6 +114,8 @@ describe("pi-telegram bridge", () => {
 			registerCommand: () => {
 				throw failure;
 			},
+			registerSection: () => () => {},
+			getSectionToken: () => null,
 			sendView: async () => null,
 			editView: async (handle) => handle,
 			recordError: () => {},
@@ -71,7 +125,7 @@ describe("pi-telegram bridge", () => {
 		await assert.rejects(() => bridge.registerCommand(REGISTRATION), /already registered/);
 	});
 
-	it("is inert with one diagnostic when pi-telegram cannot be loaded", async () => {
+	it("Stay inert when pi-telegram is absent. [REQ-24]", async () => {
 		const warnings: string[] = [];
 		let loads = 0;
 		const bridge = createTelegramBridge({
@@ -84,6 +138,14 @@ describe("pi-telegram bridge", () => {
 
 		const dispose = await bridge.registerCommand(REGISTRATION);
 		dispose();
+		// Registering the tap surface completes without throwing: a no-op.
+		const disposeSection = await bridge.registerSection(SECTION);
+		disposeSection();
+		assert.equal(
+			await bridge.sectionCallbackData("dev-server-command", "select", "alpha"),
+			null,
+			"no selection callback can be built",
+		);
 		assert.equal(await bridge.sendView({ text: "t", parseMode: "html" }, {}), null);
 		assert.equal(await bridge.editView("h1", { text: "t", parseMode: "html" }), "h1");
 		bridge.recordError("dev-server-command", new Error("boom"));

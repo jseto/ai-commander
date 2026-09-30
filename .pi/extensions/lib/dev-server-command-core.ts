@@ -6,19 +6,33 @@
  * sender, and the clock. The wiring file supplies the real adapters; tests
  * supply fakes and observe delivered/edited views and sent instructions.
  *
- * Flow: render the child menu, resolve a selection (task name, unique prefix,
- * or 1-based menu index), skip the ask when a non-loopback dev server already
- * listens in the child's worktree, otherwise send the verified instruction and
- * poll for the listener, refreshing one logical Telegram view as the server
- * comes up (or on timeout / unconfirmed send).
+ * Flow: render the child menu (with one tap button per child when a
+ * selection callback is available), resolve a selection (tap payload, task
+ * name, unique prefix, or 1-based menu index), skip the ask when a
+ * non-loopback dev server already listens in the child's worktree, otherwise
+ * send the verified instruction and poll for the listener, refreshing one
+ * logical Telegram view as the server comes up (or on timeout / unconfirmed
+ * send).
  */
 
 import type { ChildSession } from "./child-sessions.ts";
 import { devServerPorts, type ListeningProcess } from "./listening-ports.ts";
 
+/** One inline-keyboard button (structural: pi-telegram's `./keyboard` is types-only). */
+export interface InlineKeyboardButton {
+	text: string;
+	callback_data: string;
+}
+
+export interface InlineKeyboardMarkup {
+	inline_keyboard: InlineKeyboardButton[][];
+}
+
 export interface DevServerView {
 	text: string;
 	parseMode: "html";
+	/** The menu's tap keyboard; omitted when no selection callback can be built. */
+	replyMarkup?: InlineKeyboardMarkup;
 }
 
 export type ViewHandle = unknown;
@@ -41,6 +55,13 @@ export interface DevServerCoreDeps {
 	detectReachableUrls(port: number): Promise<ReachableUrls>;
 	sendView(view: DevServerView, target: DeliveryTarget): Promise<ViewHandle | null>;
 	editView(handle: ViewHandle, view: DevServerView): Promise<ViewHandle | null>;
+	/**
+	 * Builds a menu button's callback data for a child task, or null when no
+	 * callback can be built (tap surface absent, token missing, or over
+	 * Telegram's 64-byte cap). Optional: without it the menu carries no
+	 * keyboard and typed selection remains the only route.
+	 */
+	buttonCallbackData?(task: string): string | null | Promise<string | null>;
 	now(): number;
 	sleep(ms: number): Promise<void>;
 	waitMs?: number;
@@ -49,8 +70,13 @@ export interface DevServerCoreDeps {
 
 export interface DevServerCore {
 	handle(target: DeliveryTarget, args: string): Promise<void>;
+	/** The child menu as a view, for surfaces that deliver it themselves. */
+	renderMenu(): Promise<DevServerView>;
 	stop(): void;
 }
+
+/** The section callback action carried by a menu tap button [REQ-19]. */
+export const SELECT_ACTION = "select";
 
 export const DEFAULT_WAIT_MS = 120_000;
 export const DEFAULT_POLL_MS = 2_000;
@@ -226,8 +252,50 @@ export function createDevServerCore(deps: DevServerCoreDeps): DevServerCore {
 				`    🟢 port <code>${row.port}</code>${links.length > 0 ? ` · ${links.join(" · ")}` : " (no reachable URL answered)"}`,
 			);
 		});
-		lines.push("", "Reply <code>/mudevserver &lt;number | task&gt;</code> to start or open one.");
-		return { text: lines.join("\n"), parseMode: "html" };
+
+		// One tap button per child; a child whose callback cannot be built is
+		// listed without a button and stays selectable by name [REQ-19][REQ-25].
+		const buttons = await Promise.all(
+			rows.map(async (row) => {
+				const data = deps.buttonCallbackData
+					? await deps.buttonCallbackData(row.child.task)
+					: null;
+				if (!data) return null;
+				const state = row.port === null ? "⚫" : "🟢";
+				const port = row.port === null ? "" : ` · :${row.port}`;
+				return {
+					text: `${state} ${row.child.task} · ${row.child.repo}${port}`,
+					callback_data: data,
+				} satisfies InlineKeyboardButton;
+			}),
+		);
+		const keyboardRows = buttons
+			.filter((button): button is InlineKeyboardButton => button !== null)
+			.map((button) => [button]);
+
+		lines.push(
+			"",
+			keyboardRows.length > 0
+				? "Tap a button, or reply <code>/mudevserver &lt;number | task&gt;</code>, to start or open one."
+				: "Reply <code>/mudevserver &lt;number | task&gt;</code> to start or open one.",
+		);
+		return {
+			text: lines.join("\n"),
+			parseMode: "html",
+			...(keyboardRows.length > 0
+				? { replyMarkup: { inline_keyboard: keyboardRows } }
+				: {}),
+		};
+	}
+
+	async function renderMenu(): Promise<DevServerView> {
+		let children: ChildSession[];
+		try {
+			children = await deps.listChildren();
+		} catch (error) {
+			return errorView("Could not list child sessions", error);
+		}
+		return menuView(children);
 	}
 
 	type Selection =
@@ -298,7 +366,7 @@ export function createDevServerCore(deps: DevServerCoreDeps): DevServerCore {
 		};
 	}
 
-	return { handle, stop };
+	return { handle, renderMenu, stop };
 }
 
 function linkLines(urls: ReachableUrls): string[] {
