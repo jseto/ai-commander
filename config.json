@@ -7,11 +7,11 @@
       "easy": {
         "description": "Chores, trims, config and docs edits, small fixes.",
         "model": "opencode-zen-free/mimo-v2.6-flash-free",
-        "thinking": "medium"
+        "thinking": "high"
       },
       "standard": {
         "description": "Features and bug fixes with the full specs flow.",
-        "model": "opencode-zen-free/mimo-v2.6-flash-free",
+        "model": "opencode-go/mimo-v2.6-flash",
         "thinking": "xhigh"
       },
       "hard": {
