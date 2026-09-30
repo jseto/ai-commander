@@ -47,6 +47,11 @@ removed with this change (`lib/repo-scope.ts` deleted).
   handle - required for the HTML anchors and the in-place refresh
   [REQ-10][REQ-13]. The command handler fires the flow asynchronously, so a
   slow child never holds the Telegram update loop [REQ-12].
+- **Inline keyboard.** `TelegramDeliveryView.replyMarkup` carries the menu's
+  `section:<token>:select:<task>` buttons (one per child
+  [REQ-19]); taps are answered and dispatched by a registered pi-telegram
+  *section* - see *Tap-to-select* below. The `./keyboard` subpath exports types
+  only, so the inline-keyboard shape is declared structurally.
 - **No direct pi-telegram import.** A project extension cannot resolve
   `@llblab/pi-telegram`: pi resolves an extension's imports from the
   extension's own directory, this repository has no `node_modules`, and the
@@ -77,6 +82,62 @@ registration is a no-op and every view send reports "not delivered", which
 aborts the flow before a child is touched. The bridge is injectable
 (`createTelegramBridge({ load, warn })`), so both the forwarding and the inert
 path are exercised with fakes.
+
+## Tap-to-select: how a button tap reaches the extension
+
+The requirement is a Telegram inline-keyboard menu: one button per child,
+tapped instead of typed. Research against pi-telegram 0.51.6 dist sources
+(`outbound-buttons.js`, `routing.js`, `menu.js`, `sections.js`, `updates.js`
+plus `docs/updates.md`, `docs/callback-namespaces.md`, `docs/sections.md`)
+found exactly four ways a `callback_query` can reach extension code, and only
+one answers the tap without a model turn:
+
+1. **Assistant button store (`tgbtn:`).** `planTelegramButtonReply` registers
+   buttons only while planning *assistant* markdown replies; a tap resolves
+   the store and enqueues a prompt turn. Extension-sent views never enter the
+   planner, and every tap would start an assistant turn anyway.
+2. **`[callback] <data>` fallback.** pi-telegram answers any unknown,
+   non-owned `callback_data` promptly but forwards it to the *assistant* as a
+   prompt turn - one model turn (latency plus cost) per tap instead of the
+   in-process flow.
+3. **`registerTelegramUpdateHandler` (`@llblab/pi-telegram/updates`).** Runs
+   before routing and can `consume` the update, but the public surface ships
+   no `answerCallbackQuery`: the package deliberately keeps raw transport
+   private, so consuming leaves the button spinning and passing reproduces
+   route 2.
+4. **Extension sections (`@llblab/pi-telegram/sections`).** pi-telegram's
+   *managed* callback surface: `handleCallback(ctx)` receives `answerCallback`
+   (answer promptly, then return `"handled"`), stale tokens are answered by
+   the bridge itself ("This section is no longer available."), and callbacks
+   route from **any** message carrying `section:<token>:<action>:<payload>` -
+   only the `open` and `settings` actions require stored menu state, so a
+   `select` action on our own `sendTelegramView` message dispatches straight
+   to the section. `section:` is an owned prefix, so no `[callback]` text
+   leaks to the assistant.
+
+**Chosen route: sections.** The extension registers one section
+(`dev-server-command`, label `🖥 Dev server`) beside the command on
+`session_start` [REQ-23]. Its `render()` returns the same child menu, so the
+main-menu row is a working entry point instead of a dead registration; its
+`handleCallback` answers the tap first [REQ-21], then dispatches the *exact
+same* `core.handle(target, task)` flow the typed selection uses - verified ask,
+port capture, links refresh, in-flight guard, all unchanged [REQ-20]. Unknown
+actions return `"pass"`, which pi-telegram answers itself.
+
+Button callback data is `section:<token>:select:<task>`. `ctx.callbackData`
+exists only inside a section context (the command path has none), so the
+bridge builds the string from the registry token published by
+`getTelegramSectionDiagnostics()` - the same construction pi-telegram's own
+builder performs - and returns `null` when the package is absent or the data
+would exceed Telegram's 64-byte cap (the value behind the package's
+`TELEGRAM_CALLBACK_DATA_MAX_BYTES`). A child whose callback does not fit is
+listed without a button while typed selection still resolves it [REQ-25]; an
+absent or failed tap surface never breaks the command [REQ-24][REQ-26].
+
+Rejected alternatives, for the record: raw update handlers cannot answer the
+public API; the `tgbtn:` store is assistant-authored only; the
+`[callback]` fallback would turn every tap into a model turn on the
+orchestrator session.
 
 ## Child discovery
 
@@ -126,15 +187,25 @@ in-flight set suppresses duplicate asks, and a generation counter lets
 `session_shutdown` cancel polling flows without disabling the core for a later
 session [REQ-14][REQ-15].
 
+**Menu versus flow.** The menu message with its keyboard is a separate logical
+message from the flow [REQ-19]: tapping a button does *not* edit the menu in
+place; the flow sends its own "starting…" view and refreshes *that* handle
+(REQ-11…REQ-13 unchanged) [REQ-20]. The menu keeps its list and buttons, so a
+second tap selects another child, a stale tap reports its error without
+destroying the list [REQ-22], and no cross-message handle tracking is needed -
+the menu's delivery handle is discarded right after send. A tap for a child
+that is already being asked hits the existing in-flight guard [REQ-14].
+
 ## Module map and seams
 
 ```mermaid
 flowchart LR
   subgraph wiring [".pi/extensions/dev-server-command.ts (pi wiring)"]
     CMD["registerTelegramCommand mudevserver\n(session_start, project extension)"]
+    SEC["registerTelegramSection dev-server-command\n(session_start, tap surface)"]
   end
   subgraph core [".pi/extensions/lib/dev-server-command-core.ts"]
-    SEL["selection + menu rendering"]
+    SEL["selection + menu rendering\n(inline keyboard per child)"]
     FLOW["ask -> poll -> edit"]
   end
   subgraph adapters [".pi/extensions/lib (adapters at the seams)"]
@@ -146,11 +217,15 @@ flowchart LR
   BR["telegram-bridge.ts"]
   subgraph tg ["pi-telegram (global install)"]
     SV["registerTelegramCommand / sendTelegramView / editTelegramView"]
+    SX["registerTelegramSection / getTelegramSectionDiagnostics"]
   end
   CMD --> FLOW
+  SEC -->|handleCallback| FLOW
   SEL --> FLOW
   CMD --> BR
+  SEC --> BR
   BR --> SV
+  BR --> SX
   FLOW -->|deps| CS
   FLOW -->|deps| LP
   FLOW -->|deps| TS
@@ -165,15 +240,17 @@ machine, and the in-flight set. Every dependency is injected (`listChildren`,
 `/proc`, network, or Telegram.
 
 - `telegram-bridge.ts` - the `TelegramBridge` interface and the concrete
-  pi-telegram access; the only file that knows how to reach the bridge.
+  pi-telegram access (command, section, views, callback data); the only file
+  that knows how to reach the bridge.
 - `child-sessions.ts` - `listChildSessions`: task-name parsing plus exec
   adapters for tmux and git; cross-repo, no scope filter [REQ-17].
 - `listening-ports.ts` - pure `parseProcNetTcp`/`decodeProcAddress`/
   `isLoopbackAddress`/`devServerPorts`; live `scanListeningProcesses(roots)`.
 - `tmux-send.ts` - pure `flattenPane`/`paneProbe`; `sendLine(run, …)`.
-- `dev-server-command.ts` - the pi wiring and deferred registration; the
-  bridge is injected (`registerDevServerSurfaces(pi, core, bridge)`), so tests
-  drive the lifecycle with a fake bridge [REQ-15].
+- `dev-server-command.ts` - the pi wiring and deferred registration of both
+  surfaces (command plus section tap handler); the bridge is injected
+  (`registerDevServerSurfaces(pi, core, bridge)`), so tests drive the lifecycle
+  with a fake bridge [REQ-15][REQ-23].
 
 ## Trade-offs
 
@@ -255,6 +332,40 @@ Less valuable observations, deliberately left as-is:
   probes reachable URLs for every listening child (pre-existing note above);
   both are bounded by the handful of live children, and caching would go stale
   exactly when the user re-runs the command for fresh state.
+
+## Audit notes (tap-button pass, independent)
+
+Read from disk (feature file plus the modified sources; not this doc, not the
+tests) against the `codebase-design` vocabulary. Verdict: the change rides the
+existing seams - no new module, one optional core dependency, one interface
+method, two bridge methods - and the rejected callback routes are recorded
+above rather than justified after the fact.
+
+- **The seams held.** The tap surface arrives as `buttonCallbackData` (menu)
+  plus `registerSection`/`sectionCallbackData` (bridge); the flow itself
+  (selection -> ask -> poll -> edit) is untouched, so a tap reuses the exact
+  typed-selection path instead of forking it - [REQ-20] and [REQ-22] pass
+  through the same `resolveSelection` and `runFlow` a typed name does.
+- **Refactored during the pass:** the bridge's section diagnostic type was
+  narrowed to the `{id, token}` fields actually read.
+- `renderMenu` deliberately repeats `handle`'s list-plus-catch for the menu
+  branch: sharing it would make `handle` list children twice (an extra tmux
+  call per command).
+
+Less valuable observations, deliberately left as-is:
+
+- The menu builds rows and buttons in two sequential `Promise.all` passes;
+  merging them would interleave reachable-URL probes with callback building
+  for no observable gain.
+- `order: 100` on the section registration is a magic constant with no other
+  project sections to order against.
+- The section doubles as a main-menu row (a section requires a label); its
+  `render` returns the same menu, so the row is a working entry point rather
+  than dead surface - but it is one more Telegram surface than the command
+  alone would have shown.
+- When `answerCallback` itself rejects, pi-telegram answers "Section error…"
+  and the dispatch is skipped; the tap is retryable and the failure lands in
+  pi-telegram's section diagnostics, so no local recovery was added.
 
 ## Verification
 

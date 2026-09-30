@@ -2,7 +2,8 @@ Feature: Telegram /mudevserver command for mu-commander child pi sessions
 
   A pi session bridged to Telegram can list the running child pi sessions of
   the mu-commander orchestrator pattern (tmux sessions named pi-<task>, each
-  rooted in a treehouse worktree of some repository's pool), ask a selected child to start
+  rooted in a treehouse worktree of some repository's pool), offer every child as a tap
+  button on an inline keyboard beside the typed selection, ask a selected child to start
   its project's dev server through the verified tmux send, discover the port
   that server binds, and deliver the phone-reachable intranet and Tailscale
   links as clickable HTML anchors - refreshing the same message when a slow
@@ -124,3 +125,59 @@ Feature: Telegram /mudevserver command for mu-commander child pi sessions
     Then the instruction is confirmed into pi-riak-166-driver-info-view's tmux pane
     And a non-loopback listener in that riak-t worktree is captured as the port
     And the intranet and Tailscale links for that port are delivered as HTML anchors
+
+  Scenario: Offer each child as a tap button on the menu. [REQ-19]
+    Given child tmux sessions "pi-alpha" and "pi-beta" are running with pi-main
+    And a selection callback can be built for both children
+    When the user sends "/mudevserver" with no arguments
+    Then the menu message carries an inline keyboard with one button per child
+    And each button is labeled with the child's task name, repo, and dev-server state
+    And each button's callback carries exactly that child's task name
+
+  Scenario: Run the same flow when a menu button is tapped. [REQ-20]
+    Given child "pi-alpha" has no dev server listening in its worktree
+    And the menu message lists alpha with a selection button
+    When the user taps alpha's button
+    Then the instruction text is typed into pi-alpha's tmux pane through the verified send
+    And the flow's progress and links are delivered as one logical message of their own
+    And the menu message keeps its list and buttons
+
+  Scenario: Answer the button tap before any selection work starts. [REQ-21]
+    When the user taps a menu button
+    Then the callback query is answered before child listing or instruction sending begins
+
+  Scenario: Report a tap for a child that died since the menu was sent. [REQ-22]
+    Given the menu message lists children "alpha" and "beta" with selection buttons
+    And the tmux session "pi-alpha" has ended while the menu is still on screen
+    When the user taps alpha's button
+    Then a message says no child session matches alpha
+    And no instruction is sent to any child session
+    And no port polling starts
+
+  Scenario: Register the tap surface with the command and dispose both on shutdown. [REQ-23]
+    Given a mu-commander session starts
+    Then exactly one command handler and one tap surface are registered
+    When session_start fires again after a reload
+    Then still exactly one of each is registered
+    When session_shutdown fires
+    Then both registrations are removed
+
+  Scenario: Stay inert when pi-telegram is absent. [REQ-24]
+    Given pi-telegram cannot be loaded in this session
+    Then registering the command and the tap surface completes without throwing
+    And exactly one diagnostic reports the missing package
+    And no selection callback can be built
+
+  Scenario: Keep a child whose button would not fit Telegram's callback limit. [REQ-25]
+    Given a child whose name makes its selection callback longer than 64 bytes
+    When the user sends "/mudevserver" with no arguments
+    Then the menu message is still sent
+    And that child's entry carries no button while shorter-named children keep theirs
+    And selecting that child by name still works
+
+  Scenario: Keep the command alive when the tap surface cannot register. [REQ-26]
+    Given registering the tap surface fails
+    When a mu-commander session starts
+    Then the command handler is registered anyway
+    And the failure is recorded as one diagnostic
+    And the menu message is still delivered without a keyboard
