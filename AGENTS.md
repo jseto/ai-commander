@@ -737,8 +737,3 @@ one identifier the whole pattern keys on: it becomes the tmux session
   `pi -p` for one-shot tasks, the subagent extension (in-process delegation,
   `~/.pi/agent/extensions/subagent`), and `pi --mode rpc` for a programmatic
   JSONL control channel.
-- **`/merge` (user shorthand)** = "execute merge and pull": run the landing
-  mechanics immediately — check open PRs in the child repos, merge what the
-  user asked to land (squash, as requested), `--ff-only` pull the live
-  checkouts, auto-retire merged children. When nothing is open, report that
-  instead.
