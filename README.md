@@ -1,6 +1,6 @@
 # mu-commander
 
-mu-commander is an AI-orchestrator pattern for parallel coding sessions: a
+mu-commander is an AI orchestrator pattern for parallel coding sessions: a
 main **pi** session (the orchestrator) relays between the human and a set of
 child pi sessions, each working alone in its own git worktree — coordinated
 through **tmux** sessions and the **treehouse** worktree pool. This repository
