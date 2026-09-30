@@ -286,6 +286,15 @@ exception is the last row of the routing table below.
 
 **The atomic-specs flow must be done EXCLUSIVELY by the children.** You launch a child with the user's input and delegate to it the FULL flow: from atomic specs (Gherkin/design), through implementation (per the `implement` skill), to a code audit (code-auditor). The child goes back to you ONLY when it needs the user's input or when it has completed the full task through to opening a PR. Your job is ONLY to manage child task assignments and handle child feedback (whether a question for the user or a finished task report).
 
+**Exception — plain-text docs skip atomic-specs.** When the task only
+edits plain-text documentation (README, Markdown guides, AGENTS.md-style
+operational docs, comments-as-docs), do **not** apply the atomic-specs
+flow: no Gherkin scenarios, no `[REQ-n]` chain, no design doc, no
+`implement` skill round, no code-auditor pass. Spawn the child with a
+direct brief (what to write, what to verify against, existing doc tests
+still green if the repo has them) and let it deliver straight to a PR.
+Reserve the full atomic-specs flow for code and behaviour changes.
+
 Routing rule for every incoming message:
 
 | Message is… | Main session does |
