@@ -74,15 +74,15 @@ t_req1_default_level_uses_shipped_defaults() {
   resolve "" "" ""
   [ "$RC" -eq 0 ] || fail "expected exit 0, got $RC ($RERR)"
   [ -z "$RERR" ] || fail "expected no warning, got: $RERR"
-  [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking xhigh" ] \
-    || fail "default level should resolve to mimo @ xhigh, got: $OUT"
+  [ "$OUT" = "--model opencode-go/mimo-v2.6-flash --thinking xhigh" ] \
+    || fail "default level should resolve to the shipped standard model @ xhigh, got: $OUT"
 }
 
 t_req2_named_levels_select_their_mapping() {
   jq_ok || return 0
   resolve easy "" ""
-  [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking medium" ] \
-    || fail "easy should resolve to mimo @ medium, got: $OUT"
+  [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking high" ] \
+    || fail "easy should resolve to mimo @ high, got: $OUT"
   resolve hard "" ""
   [ "$OUT" = "--model opencode-go/deepseek-v4.1-flash --thinking max" ] \
     || fail "hard should resolve to deepseek @ max, got: $OUT"
@@ -91,7 +91,7 @@ t_req2_named_levels_select_their_mapping() {
 t_req3_explicit_flags_beat_the_level_mapping() {
   jq_ok || return 0
   resolve "" "" low
-  [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking low" ] \
+  [ "$OUT" = "--model opencode-go/mimo-v2.6-flash --thinking low" ] \
     || fail "thinking flag should keep the level's model, got: $OUT"
   resolve "" custom/m ""
   [ "$OUT" = "--model custom/m --thinking xhigh" ] \
@@ -101,13 +101,13 @@ t_req3_explicit_flags_beat_the_level_mapping() {
 t_req4_env_overrides_and_flag_precedence() {
   jq_ok || return 0
   resolve "" "" "" SUB_LEVEL=easy
-  [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking medium" ] \
+  [ "$OUT" = "--model opencode-zen-free/mimo-v2.6-flash-free --thinking high" ] \
     || fail "SUB_LEVEL=easy should win over the default level, got: $OUT"
   resolve "" "" "" SUB_LEVEL=easy SUB_MODEL=env/m
-  [ "$OUT" = "--model env/m --thinking medium" ] \
+  [ "$OUT" = "--model env/m --thinking high" ] \
     || fail "SUB_MODEL should win over the level mapping, got: $OUT"
   resolve "" flag/m "" SUB_LEVEL=easy SUB_MODEL=env/m
-  [ "$OUT" = "--model flag/m --thinking medium" ] \
+  [ "$OUT" = "--model flag/m --thinking high" ] \
     || fail "--model flag should win over SUB_MODEL, got: $OUT"
 }
 

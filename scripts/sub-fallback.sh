@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Recover a child stuck on the free provider's usage limit (FreeUsageLimitError
-# / HTTP 429): switch the running child's pi TUI to the fallback model from
-# config.json (taskLevels.fallbackModel) through the shared verified send, and
-# confirm the switch in the child's status bar.
+# Recover a child stuck on a free-provider failure: the usage limit
+# (FreeUsageLimitError / HTTP 429) or the free-tier rejection that blocks
+# pi's compaction calls (FreeTierError / HTTP 403). Switches the running
+# child's pi TUI to the fallback model from config.json
+# (taskLevels.fallbackModel) through the shared verified send, and confirms
+# the switch in the child's status bar.
 #
-# Never speculative: the child's pane must already show the free-limit error,
-# and the child must not already be on the fallback model — the status-bar
-# probe matches the model id as a delimited token, so an id that merely
+# Never speculative: the child's pane must already show the provider
+# failure, and the child must not already be on the fallback model — the
+# status-bar probe matches the model id as a delimited token, so an id that
+# merely
 # extends it (the free "…-free" variant of the fallback id) is not "already
 # on". No error (or no configured fallback) means no switch is sent.
 #
@@ -42,13 +45,13 @@ tmux has-session -t "$SESS" 2>/dev/null \
 # Detect first: a switch is only ever sent once the pane shows the provider
 # failure, so a healthy child is never moved off its model.
 if ! pane_has_free_limit_error "$TASK" "$FALLBACK_SCAN_LINES"; then
-  info "no FreeUsageLimitError in $SESS — no model switch performed"
+  info "no free-provider failure (FreeUsageLimitError/429, FreeTierError/403) in $SESS — no model switch performed"
   exit 0
 fi
 
 MODEL=$(resolve_fallback_model)
 if [ -z "$MODEL" ]; then
-  die "free usage limit detected in $SESS, but no fallbackModel is configured in $(levels_config) — no model switch performed"
+  die "free-provider failure detected in $SESS, but no fallbackModel is configured in $(levels_config) — no model switch performed"
 fi
 
 # Re-running after a successful (or externally performed) switch is a no-op.

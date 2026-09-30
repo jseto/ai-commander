@@ -1,7 +1,11 @@
 Feature: Fallback model for the free provider's usage limit (sub-fallback)
-  The free provider behind the standard/easy child levels
+  The free provider behind the `easy` child level
   (opencode-zen-free/mimo-v2.6-flash-free) can exhaust its quota and answer
-  every request with FreeUsageLimitError (HTTP 429). Pi treats that provider
+  every request with FreeUsageLimitError (HTTP 429). A second free-provider
+  failure wedges a child the same way: pi's compaction/summarization calls
+  answered with HTTP 403 FreeTierError ("OpenCode's free tier can only be
+  used from within OpenCode") block auto-compaction and leave the child
+  stuck. Pi treats that provider
   error as terminal — it does not retry — so the child sits idle and the
   task stalls. A fallback model entry in config.json (taskLevels.fallbackModel,
   plus an optional taskLevels.fallbackThinking) names a model the orchestrator
@@ -113,6 +117,30 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
       fallbackModel — a config problem for config.json
     And it stops at the rejection instead of nudging the composer in a
       warn loop, leaving the composer clear
+
+  Scenario: A FreeTierError/403 pane failure is detected [REQ-17]
+    Given a child pane showing pi's compaction failures
+      'Auto-compaction failed: Turn prefix summarization failed: 403:'
+      followed by
+      '{"type":"FreeTierError","message":"OpenCode's free tier can only be
+      used from within OpenCode"}'
+    When pane_has_free_limit_error is called for the task
+    Then it reports the failure
+    When sub-fallback.sh runs for the task with a configured fallbackModel
+    Then "/model <fallbackModel>" is sent through the verified send and
+      confirmed instead of no-op'ing
+
+  Scenario: Failure messages describe both detected failure kinds [REQ-18]
+    Given a running child whose pane shows ordinary output
+    When sub-fallback.sh runs for the task
+    Then no keys are sent to the child's pane
+    And its no-switch message names both FreeUsageLimitError and
+      FreeTierError and exits 0
+    Given a config whose taskLevels section has no fallbackModel
+    And a running child whose pane shows the FreeTierError failure
+    When sub-fallback.sh runs for the task
+    Then it fails with a message naming config.json and describing the pane
+      as a free-provider failure, not only as a usage limit
 
   Scenario: A missing child session dies before anything else [REQ-11]
     Given the child's tmux session is not running
