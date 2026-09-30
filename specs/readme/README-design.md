@@ -12,7 +12,7 @@ be present. No product code changes.
 
 | Entity | Role |
 |---|---|
-| `README.md` | The deliverable. Sections: title + description, Features/overview, Installation, Usage, Configuration, Development/tests. |
+| `README.md` | The deliverable. Sections: title + one-paragraph description, What is it, Install, How to use, Mu usage for self-configuration, Dependencies. |
 | `specs/readme/README.feature` | Atomic requirements, one Scenario per `[REQ-n]`. |
 | `tests/readme.test.sh` | Bash test, repo conventions (`fail`/`run`, `[REQ-n]` assertion blocks), exit 0 = green. Asserts structure and *referential honesty* (no fabricated commands/files/vars). |
 
@@ -31,7 +31,12 @@ flowchart LR
 ```
 
 - **Structure**: one assertion block per Gherkin scenario, grep-able headings
-  (`## Installation`, `## Usage`, `## Configuration`, license absence).
+  (`## What is it`, `## Install`, `## How to use`, `## Mu usage for
+  self-configuration`, `## Dependencies`, license absence).
+  The 2026 simplification pass replaced the earlier section list
+  (Features/Installation/Usage/Configuration/Development); [REQ-2] through
+  [REQ-7] were re-pointed or restructured to the new headings only — the
+  referential-honesty checks are unchanged.
 - **Referential honesty**: every `scripts/<name>.sh` and `tests/<name>`
   token in the README must exist; every `SUB_*`/`DEV_BRANCH`/`MAIN_*`/
   `PI_*`/`SCRATCH_DIR` variable named must appear in `scripts/`.
