@@ -1,7 +1,7 @@
 Feature: README.md for the mu-commander repository
 
   The repository root gains a single README.md that describes mu-commander
-  as it actually is: the AI-orchestrator pattern (a main pi session spawning
+  as it actually is: the AI orchestrator pattern (a main pi session spawning
   and driving child pi sessions in tmux + treehouse worktrees) plus the
   launcher, helper scripts, specs, and tests that implement it. Every command
   and claim must be verified against the files in this repository (AGENTS.md,
