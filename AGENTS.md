@@ -250,7 +250,7 @@ SCRIPTS=/home/jseto/programming-projects/mu-commander/scripts
 | `sub-land.sh <task> [repo] [--patch]` | Read-only: what would be lost, commits to publish, push + `gh pr create` commands; `--patch` exports the work to `tmp/pi-sub/reports/<task>.patch` |
 | `sub-retire.sh <task> [repo] [--force] [--keep-files] [--no-branch-cleanup]` | Kill `pi-<task>`, `treehouse return --force`, delete the task's scratch brief/report/patch, best-effort clean up the task's merged local/remote branches (`--no-branch-cleanup` skips that), and append a conversation-log entry recording the retirement with the child's session cost; **refuses** when uncommitted or unpublished work would be destroyed (overridable with `--force`; `--keep-files` retains the scratch docs) |
 | `sub-clean.sh [repo] [--yes]` | Sweep scratch docs for tasks with no lease and no running tmux session (dry-run unless `--yes`) |
-| `conversation-log.sh append <kind> <message>` | Append one entry to the weekly conversation/operation log in gitignored `logs/conversations/` (6-month retention sweep runs on every call; **logs are only read to resolve operational issues** — never during normal operation) |
+| `conversation-log.sh append <kind> <message>` | Append one entry to the weekly conversation/operation log in gitignored `logs/conversations/` (6-month retention sweep runs on every call; **logs are only read to resolve operational issues** — never during normal operation); kinds: `prompt`, `reply`, `child-out`, `child-in`, `operation` — see *Conversation logging* |
 | `start-main.sh [--detach\|-d]` | Start the orchestrator's main pi session in tmux `pi-main` (name follows `$MAIN_SESSION`): create it detached at the main checkout of this repo, launch plain `$PI_BIN` (default `pi`, no child flags, submission verified via `tmux_send_line`), set the `main-pane-width 50%` / `main-vertical` convention, then attach — `--detach`/`-d` only starts or points at it; an existing session is reported (name + cwd) and re-attached, never restarted |
 | `worktree-setup.sh` | treehouse `post_create` hook: installs dependencies in each new worktree (lockfile-aware; see *Init scripts* below) |
 
@@ -325,6 +325,17 @@ Hard rules:
   questions go to the proper child and its answer comes back verbatim, tasks
   get a spawned or live working child. Only an explicit request to change
   the main session's own behaviour short-circuits the relay.
+- **Never do a child's task mechanics on its behalf** (user directive,
+  2026-09-30, "this task is not yours"): leasing worktrees, creating
+  branches, repo/PR setup, moving files, fixing the child's output, or any
+  other step of the assigned task is child work, even when started with good
+  intentions or when the child seems blocked. Hand over whatever was already
+  prepared and let the child own the task end-to-end. The child must work on
+  its own and **ask the user through the main session when it has questions**
+  (push a `QUESTION` via `sub-report.sh`; the main session relays the answer
+  verbatim, never answering from itself) — and use **lavish** HTML artifacts
+  when a question or report is better shown than told. The main session's
+  job stays: spawn, route, quote, report, run the lifecycle mechanics.
 
 ### Lavish reviews (Telegram)
 
@@ -553,6 +564,31 @@ conversation log (`retired <task> | session cost: $0.1234`), with the cost
 summed from the child's own pi session records in its agent directory. A
 missing cost source or a failing log only warns — it never changes the
 retirement's outcome.
+
+### Conversation logging — prompts, replies, and child traffic
+
+Besides the `operation` entries the helpers write, the main session keeps a
+verbatim transcript of the conversation itself in the same weekly log
+(`logs/conversations/`), appended **as the exchange happens**, never batched
+at the end:
+
+| kind | What to append |
+|---|---|
+| `prompt` | The user's prompt, verbatim, right before answering it — one entry per prompt. |
+| `reply` | The main session's final answer to that prompt, verbatim, right after sending it. |
+| `child-out` | Every message the main session sends to a child: the spawn kickoff (a one-line summary plus the `tmp/pi-sub/tasks/<task>.md` path when the brief lives in a file), every `sub-send.sh` instruction, and relays of the user's answer to a child's `QUESTION`. |
+| `child-in` | Every message a child sends back: `DONE:` / `QUESTION:` / `BLOCKED:` notices and the report content relayed to the user, with the `tmp/pi-sub/reports/<task>.md` path. |
+
+Rules:
+
+- One entry per exchange, via `conversation-log.sh append <kind> "<text>"`;
+  the script flattens multi-line text into a single log line, so paste the
+  text as-is.
+- Appends are blind — the log is never read during normal operation, so no
+  dedupe or "what already got logged" checks.
+- A failing log only warns; it never blocks, delays, or rewrites a reply or
+  a piece of child traffic.
+- Read side is unchanged: logs are read only to resolve operational issues.
 
 ### Prompt template: spawn a subsession
 
