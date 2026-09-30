@@ -2,16 +2,18 @@ Feature: Telegram /mudevserver command for mu-commander child pi sessions
 
   A pi session bridged to Telegram can list the running child pi sessions of
   the mu-commander orchestrator pattern (tmux sessions named pi-<task>, each
-  rooted in a mu-commander treehouse worktree), ask a selected child to start
+  rooted in a treehouse worktree of some repository's pool), ask a selected child to start
   its project's dev server through the verified tmux send, discover the port
   that server binds, and deliver the phone-reachable intranet and Tailscale
   links as clickable HTML anchors - refreshing the same message when a slow
   child brings the server up. The command ships as a project extension of the
-  mu-commander repository, so it exists only in mu-commander sessions, and
-  children of other repositories are never listed.
+  mu-commander repository, so it exists only in mu-commander sessions, but its
+  child menu spans every repository's treehouse pool on the machine - each
+  entry labeled with the child's repo - and a child of any repository can be
+  selected.
 
-  Scenario: List the running mu-commander child sessions with their worktree and dev-server state. [REQ-1]
-    Given child tmux sessions "pi-alpha" and "pi-beta" are running in mu-commander worktrees with pi-main
+  Scenario: List all running child sessions with their repo, worktree, and dev-server state. [REQ-1]
+    Given child tmux sessions "pi-alpha" and "pi-beta" are running with pi-main
     When the user sends "/mudevserver" with no arguments
     Then one chat message lists alpha and beta with their repo and worktree
     And each entry says whether a dev server is already listening in that worktree
@@ -36,7 +38,7 @@ Feature: Telegram /mudevserver command for mu-commander child pi sessions
     And no instruction is sent to any child session
 
   Scenario: Report when no child session is running. [REQ-5]
-    Given no tmux session other than pi-main and the current one is named pi-<task> in mu-commander
+    Given no tmux session other than pi-main and the current one is named pi-<task>
     When the user sends "/mudevserver" with no arguments
     Then one message says no child session is running
     And no error is reported
@@ -110,8 +112,15 @@ Feature: Telegram /mudevserver command for mu-commander child pi sessions
     Then the extension lives under the repository's .pi/extensions directory
     And it is not installed in the global pi extensions directory
 
-  Scenario: List only children rooted in the session's repository checkouts. [REQ-17]
-    Given child sessions "pi-alpha" in a mu-commander worktree and "pi-other" in another repository's worktree are running
+  Scenario: List children of every repository's pool, labeled with their repo. [REQ-17]
+    Given child sessions "pi-alpha" in a mu-commander worktree and "pi-riak-166-driver-info-view" in a riak-t worktree are running
     When the command lists the children
-    Then only alpha is listed
-    And pi-other is never selectable
+    Then both children are listed, ordered by task name
+    And each entry shows that child's repo name so mu-commander and riak-t children are distinguishable
+
+  Scenario: Select a child of another repository end to end. [REQ-18]
+    Given child "pi-riak-166-driver-info-view" is rooted in a riak-t treehouse worktree
+    When the user selects riak-166
+    Then the instruction is confirmed into pi-riak-166-driver-info-view's tmux pane
+    And a non-loopback listener in that riak-t worktree is captured as the port
+    And the intranet and Tailscale links for that port are delivered as HTML anchors

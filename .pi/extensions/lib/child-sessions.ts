@@ -7,7 +7,9 @@
  * pane, so a live `pi-<task>` session means a live child, and the pane's
  * current path is the leased worktree. `pi-main` is the orchestrator itself
  * and never a child; the invoking session is excluded so a session never lists
- * itself. The repo name is the basename of the worktree's git toplevel.
+ * itself. Discovery is cross-repo: a child may be rooted in any repository's
+ * treehouse pool, and the repo label is the basename of the worktree's git
+ * toplevel [REQ-17].
  */
 
 import { basename } from "node:path";
