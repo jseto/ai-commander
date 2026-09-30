@@ -42,7 +42,22 @@ cd mu-commander
 
 ### 2. Dependencies
 
-Required:
+Recommended — the installer detects which required tools are missing and
+installs only those (idempotent, never overwrites an existing tool, prints a
+manual hint for anything it cannot install, and exits 0 only when every
+dependency resolves on PATH):
+
+```bash
+./install.sh
+```
+
+It installs missing system packages with the platform's package manager
+(apt / dnf / pacman / Homebrew), fetches treehouse from its GitHub release
+into `~/.local/bin`, installs pi with npm, delegates shellcheck to the
+pinned install in `scripts/worktree-setup.sh`, and ends with a summary of
+installed / already present / needs manual action.
+
+Required (manual reference for `./install.sh`):
 
 | Tool | Used for |
 |---|---|
