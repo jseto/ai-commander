@@ -28,8 +28,8 @@ import type {
 	TelegramBridge,
 	TelegramCommandRegistration,
 	TelegramSectionRegistration,
-} from "../../.pi/extensions/telegram-bridge.ts";
-import { resolveAgentDir } from "../../.pi/extensions/telegram-bridge.ts";
+} from "../../.pi/extensions/lib/telegram-bridge.ts";
+import { resolveAgentDir } from "../../.pi/extensions/lib/telegram-bridge.ts";
 
 const ALPHA: ChildSession = {
 	task: "alpha",
