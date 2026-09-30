@@ -55,23 +55,34 @@ t_req1_title_and_description() {
   done
 }
 
-# --- [REQ-2] feature overview ----------------------------------------------
+# --- [REQ-2] opening description covers the pattern ------------------------
+# The simplified README dropped the dedicated "Features" section: the
+# pattern itself is described in "What is it", while the task levels and
+# the fallback live where they are configured ("Mu usage for
+# self-configuration").
 t_req2_feature_overview() {
-  local feat
-  feat=$(section '^## Features')
-  [ -n "$feat" ] || fail "no '## Features' section"
+  local what
+  what=$(section '^## What is it')
+  [ -n "$what" ] || fail "no '## What is it' section"
   local topic
-  for topic in "sub-" treehouse "task level" fallback orchestrat; do
-    printf '%s' "$feat" | grep -qi -- "$topic" \
-      || fail "features section must cover '$topic'"
+  for topic in "sub-" treehouse orchestrat; do
+    printf '%s' "$what" | grep -qi -- "$topic" \
+      || fail "'What is it' section must cover '$topic'"
+  done
+  local conf
+  conf=$(section '^## Mu usage')
+  [ -n "$conf" ] || fail "no '## Mu usage for self-configuration' section"
+  for topic in taskLevels fallback; do
+    printf '%s' "$conf" | grep -qi -- "$topic" \
+      || fail "self-configuration section must cover '$topic'"
   done
 }
 
-# --- [REQ-3] dedicated Installation section ---------------------------------
+# --- [REQ-3] dedicated Install section -------------------------------------
 t_req3_installation_section() {
   local inst
-  inst=$(section '^## Installation')
-  [ -n "$inst" ] || fail "no top-level '## Installation' section"
+  inst=$(section '^## Install')
+  [ -n "$inst" ] || fail "no top-level '## Install' section"
   printf '%s' "$inst" | grep -qF 'git clone https://github.com/jseto/mu-commander.git' \
     || fail "Installation must show cloning this repository"
   # dependencies the scripts actually `need`
@@ -109,18 +120,18 @@ t_req4_installation_commands_exist() {
   [ "$missing" -eq 0 ] || fail "README references non-existent scripts"
   # The repo's mu launcher is referenced and supports passthrough --help.
   local inst
-  inst=$(section '^## Installation')
+  inst=$(section '^## Install')
   printf '%s' "$inst" | grep -qF './mu --help' \
     || fail "Installation must document './mu --help' as a verification"
   printf '%s' "$inst" | grep -qF 'bash tests/' \
     || fail "Installation must document running the test suite"
 }
 
-# --- [REQ-5] Usage section with real commands -------------------------------
+# --- [REQ-5] "How to use" section with real commands ------------------------
 t_req5_usage_commands_match_scripts() {
   local usage
-  usage=$(section '^## Usage')
-  [ -n "$usage" ] || fail "no '## Usage' section"
+  usage=$(section '^## How to use')
+  [ -n "$usage" ] || fail "no '## How to use' section"
   local script
   for script in sub-spawn.sh sub-status.sh sub-changes.sh sub-send.sh \
                 sub-report.sh sub-land.sh sub-retire.sh; do
@@ -142,8 +153,8 @@ t_req5_usage_commands_match_scripts() {
 # --- [REQ-6] configuration sources -----------------------------------------
 t_req6_configuration_documented() {
   local conf
-  conf=$(section '^## Configuration')
-  [ -n "$conf" ] || fail "no '## Configuration' section"
+  conf=$(section '^## Mu usage')
+  [ -n "$conf" ] || fail "no '## Mu usage for self-configuration' section"
   local key
   for key in taskLevels default fallbackModel fallbackThinking easy standard hard; do
     printf '%s' "$conf" | grep -qF "$key" \
@@ -159,15 +170,15 @@ t_req6_configuration_documented() {
   [ "$missing" -eq 0 ] || fail "README names env vars the scripts do not use"
 }
 
-# --- [REQ-7] development / tests -------------------------------------------
+# --- [REQ-7] tests documented ----------------------------------------------
+# The simplified README dropped the dedicated "Development" section: how to
+# run the suite lives in "Install -> 5. Verify", the [REQ-n] linkage in the
+# opening description. The referential-honesty half is unchanged.
 t_req7_development_tests_documented() {
-  local dev
-  dev=$(section '^## Development')
-  [ -n "$dev" ] || fail "no '## Development' section"
-  printf '%s' "$dev" | grep -qF 'bash tests/' \
-    || fail "Development must show how to run tests with bash"
-  printf '%s' "$dev" | grep -qF '[REQ-n]' \
-    || fail "Development must explain the [REQ-n] test/scenario linkage"
+  grep -qF 'bash tests/' "$README" \
+    || fail "README must show how to run tests with bash 'bash tests/'"
+  grep -qF '[REQ-n]' "$README" \
+    || fail "README must explain the [REQ-n] test/scenario linkage"
   local ref missing=0
   for ref in $(tokens 'tests/[A-Za-z0-9._-]+\.sh'); do
     [ -f "$ROOT/$ref" ] || { printf 'missing: %s\n' "$ref"; missing=1; }
@@ -227,12 +238,12 @@ run() {
 }
 
 run "[REQ-1]  title and accurate opening description"          t_req1_title_and_description
-run "[REQ-2]  feature overview covers the pattern"            t_req2_feature_overview
-run "[REQ-3]  dedicated Installation section"                 t_req3_installation_section
-run "[REQ-4]  Installation references only real commands"     t_req4_installation_commands_exist
-run "[REQ-5]  Usage shows real scripts and flags"             t_req5_usage_commands_match_scripts
-run "[REQ-6]  Configuration documents config + env vars"      t_req6_configuration_documented
-run "[REQ-7]  Development section documents the tests"        t_req7_development_tests_documented
+run "[REQ-2]  opening + self-config cover the pattern"        t_req2_feature_overview
+run "[REQ-3]  dedicated Install section"                      t_req3_installation_section
+run "[REQ-4]  Install references only real commands"          t_req4_installation_commands_exist
+run "[REQ-5]  'How to use' shows real scripts and flags"      t_req5_usage_commands_match_scripts
+run "[REQ-6]  self-configuration documents config + env vars" t_req6_configuration_documented
+run "[REQ-7]  tests documented ([REQ-n] + bash tests/)"       t_req7_development_tests_documented
 run "[REQ-8]  no License section without a LICENSE file"      t_req8_no_license_section_without_license
 run "[REQ-9]  scannable sections, no filler"                  t_req9_scannable_structure
 run "[supp]   shellcheck + bash -n of this suite"             t_sup_lint
