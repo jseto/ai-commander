@@ -139,6 +139,11 @@ worktree right before `get` hands it over:
   version is already in place), refreshes its own managed link when the pin
   changes, and only warns — never overwrites — when a different shellcheck
   occupies that path or when PATH resolves shellcheck elsewhere;
+- **activates the repository's versioned git hooks** — sets the relative
+  `core.hooksPath` to `.githooks` (resolved per worktree) when it is unset
+  and the worktree has a `.githooks/` directory; a foreign `core.hooksPath`
+  and a repository without `.githooks/` are left untouched, and the step
+  never fails the setup (specs/skills-sync-hook);
 - logs `[worktree-setup] …` to stderr (stdout stays clean for
   `get --lease`); a failing step is reported but does **not** fail the
   `get`. The strict package-manager fallback is forced after a failed frozen

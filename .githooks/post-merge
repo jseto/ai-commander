@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# mu-commander post-merge hook: mirror ~/.agents/skills into the repository's
+# required-skills/ folder after a merge completes (specs/skills-sync-hook).
+#
+# A merge must never be blocked by the sync: every problem is already
+# reported by scripts/sync-skills.sh on stderr, and this hook always exits 0.
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -n "${HOME:-}" ] || exit 0
+hook=$root/scripts/sync-skills.sh
+[ -f "$hook" ] || exit 0
+bash "$hook" "$HOME/.agents/skills" "$root/required-skills" || true
+exit 0

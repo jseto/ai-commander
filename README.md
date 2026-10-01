@@ -48,7 +48,26 @@ Also expected on a normal Unix system: `sed`, `grep`, `awk`, `date`,
 `readlink`, `sha256sum`, `tar`, `mktemp`. shellcheck is auto-provisioned —
 see [Dependencies](#dependencies) below.
 
-### 3. Put the `mu` launcher on PATH
+### 3. Skills and git hooks
+
+The installer also runs this repository's skills sync and git-hook
+activation:
+
+- every `git push` and `git merge` mirrors the skill directories from
+  `~/.agents/skills` into `required-skills/` — through the versioned hooks
+  in `.githooks/`, activated by `core.hooksPath`, which `./install.sh` and
+  `scripts/worktree-setup.sh` set when it is unset (a foreign value is
+  never overwritten). A fresh clone therefore gets its hooks the first time
+  it runs `./install.sh` or is provisioned as a worktree;
+- every `./install.sh` run then copies `required-skills/` into
+  `.agents/skills/`, the project location pi discovers its skills in.
+
+Both folders are gitignored local caches: re-run `./install.sh` after a
+push or merge to activate refreshed skills, or sync by hand with
+`scripts/sync-skills.sh <source-dir> <dest-dir>`. A sync problem never
+blocks a push or a merge, and never changes the installer's exit status.
+
+### 4. Put the `mu` launcher on PATH
 
 `mu` creates (or reuses) the durable `pi-main` tmux session at the repository
 root and runs pi inside it; it resolves its own symlink, so the session is
@@ -61,7 +80,7 @@ ln -sf "$(pwd)/mu" ~/.local/bin/mu   # ensure ~/.local/bin is on PATH
 
 If `pi` is not on PATH, point `PI_BIN` at it.
 
-### 4. One-time setup
+### 5. One-time setup
 
 ```bash
 # a) Create the treehouse pool config (pool under $HOME, no repo scripts run):
@@ -78,7 +97,7 @@ treehouse init
 # d) Review config.json — see "Mu usage for self-configuration" below.
 ```
 
-### 5. Verify
+### 6. Verify
 
 ```bash
 ./mu --help               # pi's usage; exits 127 if pi is missing

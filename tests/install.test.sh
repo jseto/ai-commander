@@ -205,6 +205,11 @@ EOS
 sandbox() {
   rm -rf "${SB:?}"/*
   mkdir -p "$SB/bin" "$SB/home/.local/bin" "$SB/log" "$SB/work"
+  # Hermetic source for install.sh's advisory skills step (MU_SKILLS_SRC):
+  # the real checkout's required-skills/.agents/skills folders are never read
+  # or written by this suite.
+  mkdir -p "$SB/skills-src/test-skill"
+  printf 'name: test-skill\n' > "$SB/skills-src/test-skill/SKILL.md"
   write_stubs
   export STUB_LOG_DIR="$SB/log"
   export STUB_BIN="$SB/bin"
@@ -225,6 +230,8 @@ run_installer() {
   ( cd "$SB/work" && env -i \
       PATH="$RUN_PATH" \
       HOME="$SB/home" \
+      MU_SKILLS_SRC="$SB/skills-src" \
+      MU_SKILLS_DST="$SB/skills-dst" \
       STUB_LOG_DIR="$SB/log" \
       STUB_BIN="$SB/bin" \
       STUB_PIN="$STUB_PIN" \
