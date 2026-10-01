@@ -49,13 +49,13 @@ _Thanks for your tokens!_
 
 Thanks to **Mario Zechner** for his minimalist [Pi Agent](https://pi.dev/). It made the `mu-commander` development very easy.
 
-Thanks to **Kun Chen** for inspiring me with [Firstmate](https://github.com/kunchenguid/firstmate). `mu-commander` is a lightweight implementation of **Firstmate**. _Kun_ made an amazing piece of software but it was too opinionated for my personal taste and a token eager. I'm a poor (tokenless) man ;).
+Thanks to **Kun Chen** for inspiring me with [Firstmate](https://github.com/kunchenguid/firstmate). `mu-commander` is a lightweight implementation of **Firstmate**. _Kun_ made an amazing piece of software but it was too opinionated for my personal taste and a token eager. I'm a poor (tokenless) man ;). `mu-commander` still uses his [Treehouse](https://github.com/kunchenguid/treehouse) and [Lavish](https://github.com/kunchenguid/lavish-axi) as dependencies.
 
 Thanks to **Matt Pocock** for his brilliant [AI Skills for Real Engineers](https://github.com/mattpocock/skills). I used to follow him as a master of _Typescript metatyping_ long time ago. In my research to force LLM models to write _beautiful_ code, I found that _Matt_ moved to create skills that follow best practices. At the beginning I was reluctant. I don't like to bloat my prompt with massive skills, but they are really slim and work amazingly well. `mu-commander` uses some forked skills from him.
 
 ## Skills
 
-`mu-commander` uses a bunch of slim skills. Their main purpose is direct LLM to create decoupled and maintenable code. They follow a path from **specs definition** to **code auditing**.
+`mu-commander` uses a bunch of slim skills. Their main purpose is direct LLMs to create decoupled and maintenable code. They follow a path from **specs definition** to **code auditing** to deliver ready to merge PRs.
 
 > A note on TDD:
 >
