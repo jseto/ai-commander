@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Behavioural tests for scripts/worktree-setup.sh shellcheck provisioning.
-# One test per Scenario in specs/shellcheck-in-repo/shellcheck-in-repo.feature,
-# plus supplementary checks (checksum rejection, PATH note, lint).
+# Behavioural tests for scripts/worktree-setup.sh: shellcheck provisioning
+# (one test per Scenario in specs/shellcheck-in-repo/shellcheck-in-repo.feature)
+# and the git-hooks activation ([REQ-11]/[REQ-12] in
+# specs/skills-sync-hook/skills-sync-hook.feature), plus supplementary checks
+# (checksum rejection, PATH note, lint).
 #
 # Each test sandboxes a fake HOME/XDG_DATA_HOME, a scratch worktree cwd, and
-# stub curl/tar/sha256sum/wget/go binaries placed first on PATH — no network,
-# no real tarballs, no real tmux/treehouse pool, and the real shellcheck
-# binaries on this machine are never executed or modified.
+# stub curl/tar/sha256sum/wget/go/git binaries placed first on PATH — no
+# network, no real tarballs, no real tmux/treehouse pool; this machine's
+# real shellcheck tool is never executed or modified by these stubs.
 set -u
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -93,7 +95,18 @@ printf 'go %s\n' "$*" >> "$STUB_LOG_DIR/go.log"
 exit 0
 EOS
 
-  chmod +x "$SB/bin/curl" "$SB/bin/wget" "$SB/bin/tar" "$SB/bin/sha256sum" "$SB/bin/go"
+  # git: logs every invocation; `git config core.hooksPath` (read) returns
+  # STUB_GIT_HOOKSPATH (empty = unset), a write is only logged.
+  cat > "$SB/bin/git" <<'EOS'
+#!/usr/bin/env bash
+printf 'git %s\n' "$*" >> "$STUB_LOG_DIR/git.log"
+if [ "${1:-}" = config ] && [ "${2:-}" = core.hooksPath ] && [ -z "${3:-}" ]; then
+  printf '%s' "${STUB_GIT_HOOKSPATH:-}"
+fi
+exit 0
+EOS
+
+  chmod +x "$SB/bin/curl" "$SB/bin/wget" "$SB/bin/tar" "$SB/bin/sha256sum" "$SB/bin/go" "$SB/bin/git"
 }
 
 sandbox() {
@@ -104,7 +117,7 @@ sandbox() {
   export XDG_DATA_HOME="$SB/home/.local/share"
   export STUB_LOG_DIR="$SB/log"
   export STUB_PIN="$PIN"
-  unset STUB_CURL_FAIL STUB_SHA256_FAIL STUB_TAR_FAIL 2>/dev/null || true
+  unset STUB_CURL_FAIL STUB_SHA256_FAIL STUB_TAR_FAIL STUB_GIT_HOOKSPATH 2>/dev/null || true
   # Managed slot dir first, then stubs, then the stray dir, then the real
   # PATH (which may contain this machine's shellcheck - always shadowed).
   export PATH="$SB/home/.local/bin:$SB/bin:$SB/stray:$ORIG_PATH"
@@ -268,6 +281,27 @@ t_req8_agents_md_documents_dependency() {
     || fail "AGENTS.md does not document the shellcheck provisioning"
 }
 
+# --- [REQ-11] activate .githooks when core.hooksPath is unset --------------
+t_req11_activates_githooks_when_unset() {
+  sandbox
+  mkdir -p "$SB/wt/.githooks"
+  : > "$SB/wt/.githooks/pre-push"
+  run_setup
+  assert_status 0
+  assert_contains "git hooks: core.hooksPath -> .githooks"
+  grep -qxF 'git config core.hooksPath .githooks' "$SB/log/git.log" \
+    || fail "core.hooksPath was not written: $(tr '\n' '|' < "$SB/log/git.log" 2>/dev/null)"
+}
+
+# --- [REQ-12] skip a repository without .githooks --------------------------
+t_req12_skips_repository_without_githooks() {
+  sandbox                    # scratch worktree carries no .githooks/
+  run_setup
+  assert_status 0
+  [ ! -f "$SB/log/git.log" ] \
+    || fail "git was invoked although .githooks is absent: $(tr '\n' '|' < "$SB/log/git.log")"
+}
+
 t_sup_checksum_mismatch_rejected() {
   sandbox
   export STUB_SHA256_FAIL=1
@@ -284,6 +318,19 @@ t_sup_path_note_when_shadowed() {
   run_setup
   assert_status 0
   assert_contains "PATH resolves shellcheck"
+}
+
+t_sup_foreign_hooks_path_left_alone() {
+  sandbox
+  mkdir -p "$SB/wt/.githooks"
+  : > "$SB/wt/.githooks/pre-push"
+  export STUB_GIT_HOOKSPATH=custom-hooks
+  run_setup
+  assert_status 0
+  assert_contains "core.hooksPath is 'custom-hooks' - leaving it alone"
+  if grep -qxF 'git config core.hooksPath .githooks' "$SB/log/git.log"; then
+    fail "foreign core.hooksPath was overwritten"
+  fi
 }
 
 t_sup_shellcheck_touched_scripts() {
@@ -317,8 +364,11 @@ run "[REQ-5] failure reported without aborting setup"         t_req5_failure_rep
 run "[REQ-6] resolve repo-provided shellcheck on PATH"        t_req6_resolves_repo_provided_shellcheck_on_path
 run "[REQ-7] stray shellcheck outside slot untouched"         t_req7_stray_shellcheck_outside_slot_untouched
 run "[REQ-8] AGENTS.md documents the dependency"              t_req8_agents_md_documents_dependency
+run "[REQ-11] activate .githooks when hooksPath unset"        t_req11_activates_githooks_when_unset
+run "[REQ-12] skip repositories without .githooks"            t_req12_skips_repository_without_githooks
 run "[supp] checksum mismatch rejected"                       t_sup_checksum_mismatch_rejected
 run "[supp] PATH note when shadowed"                          t_sup_path_note_when_shadowed
+run "[supp] foreign core.hooksPath left alone"                t_sup_foreign_hooks_path_left_alone
 run "[supp] shellcheck lint of touched scripts"               t_sup_shellcheck_touched_scripts
 
 if [ "$failures" -gt 0 ]; then

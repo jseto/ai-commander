@@ -234,6 +234,23 @@ shellcheck_step() {
 
 shellcheck_step
 
+# --- git hooks: activate the versioned .githooks/ directory -----------------
+# Guarded on .githooks/ existing: this script is also the user-level
+# post_create hook of OTHER repositories (treehouse), and pointing their
+# core.hooksPath at a directory they do not have would disable their hooks.
+# A foreign core.hooksPath is left alone; advisory only, never sets rc
+# (specs/skills-sync-hook). The relative path is resolved per worktree.
+if [ -d .githooks ] && command -v git >/dev/null 2>&1; then
+  hooks_path=$(git config core.hooksPath 2>/dev/null || true)
+  if [ -z "$hooks_path" ]; then
+    if git config core.hooksPath .githooks 2>/dev/null; then
+      log "git hooks: core.hooksPath -> .githooks"
+    fi
+  elif [ "$hooks_path" != .githooks ]; then
+    log "git hooks: core.hooksPath is '$hooks_path' - leaving it alone (.githooks not active)"
+  fi
+fi
+
 # --- dart / flutter --------------------------------------------------------
 if [ -f pubspec.yaml ]; then
   if command -v flutter >/dev/null 2>&1; then

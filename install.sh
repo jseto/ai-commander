@@ -15,6 +15,13 @@
 #     pinned source of truth for that dependency — this script deliberately
 #     declares no shellcheck version or checksum of its own.
 #
+# Besides dependencies, every run also mirrors the required skills
+# (required-skills/ -> .agents/skills/ through scripts/sync-skills.sh) and
+# activates the repository's versioned git hooks (core.hooksPath ->
+# .githooks, set only when unset, never over a foreign value). Both are
+# advisory: they report problems as warnings and never change the exit
+# status, which stays tied to PATH dependencies only (specs/skills-sync-hook).
+#
 # Idempotent and non-destructive: an existing tool is never overwritten,
 # every skip is a visible per-tool manual hint, the run ends with a summary
 # (installed / already present / needs manual action), and the exit status
@@ -377,6 +384,50 @@ install_shellcheck() {
   return 0
 }
 
+# --- required skills + git hooks (advisory, every run) -----------------------
+
+# Mirror required-skills/ into .agents/skills/ (pi's project skill location).
+# MU_SKILLS_SRC / MU_SKILLS_DST relocate the two folders for hermetic tests.
+# Failure is a warning only: the exit status stays tied to PATH dependencies.
+sync_required_skills() {
+  local src=${MU_SKILLS_SRC:-$REPO_ROOT/required-skills}
+  local dst=${MU_SKILLS_DST:-$REPO_ROOT/.agents/skills}
+  local sync="$REPO_ROOT/scripts/sync-skills.sh"
+  if [ ! -f "$sync" ]; then
+    warn "missing scripts/sync-skills.sh — required skills were not synced"
+    return 0
+  fi
+  if ! "$BASH" "$sync" "$src" "$dst"; then
+    warn "required skills sync failed — $dst may be stale"
+  fi
+  return 0
+}
+
+# Activate this repository's versioned hooks (.githooks/ via the relative
+# core.hooksPath, which git resolves against each worktree's top level).
+# Idempotent and non-destructive: set only when unset, a foreign value is
+# kept and reported — and never activated without a .githooks/ directory.
+activate_githooks() {
+  [ -d "$REPO_ROOT/.githooks" ] || return 0
+  have git || return 0   # git's own dependency report covers its absence
+  local current
+  current=$(git -C "$REPO_ROOT" config core.hooksPath 2>/dev/null) || current=
+  case "$current" in
+    .githooks) return 0 ;;
+    "")
+      if git -C "$REPO_ROOT" config core.hooksPath .githooks 2>/dev/null; then
+        info "git hooks: core.hooksPath -> .githooks"
+      else
+        warn "git hooks: could not set core.hooksPath — run 'git config core.hooksPath .githooks' by hand"
+      fi
+      ;;
+    *)
+      warn "git hooks: core.hooksPath is already '$current' — leaving it alone; run 'git config core.hooksPath .githooks' to activate this repo's hooks"
+      ;;
+  esac
+  return 0
+}
+
 # --- summary ----------------------------------------------------------------
 
 summarize() {
@@ -413,8 +464,12 @@ main() {
   total=$(count_words "$ALL_TOOLS")
   info "checking $total required dependencies"
 
+  # Both advisory steps run on every invocation, including the no-op path.
+  sync_required_skills
+
   if [ "${#PRESENT}" -gt 0 ] && [ "$(count_words "$PRESENT")" = "$total" ]; then
     info "all $total dependencies already present — nothing to install"
+    activate_githooks
     summarize
     exit 0
   fi
@@ -423,6 +478,7 @@ main() {
   install_treehouse
   install_pi
   install_shellcheck
+  activate_githooks   # after the installs: git may only have arrived now
   summarize
   if [ "$MANUAL_N" -eq 0 ]; then
     info "all dependencies present"

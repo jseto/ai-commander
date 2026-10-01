@@ -1,3 +1,5 @@
 tmp/
 logs/
 .lavish/
+required-skills/
+.agents/skills/
