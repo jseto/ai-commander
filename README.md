@@ -8,6 +8,8 @@
 >
 > **muuu** /muː/; Sound emitted by spanish cows
 
+_An opinionated (desopinionable) vibe coding project. Use at your own risk_.
+
 ## One Pi session to rule them all
 
 mu-commander is the AI orchestrator for parallel coding sessions:
@@ -21,7 +23,9 @@ one main **pi** session (the orchestrator) drives child pi sessions inside
 - The `scripts/sub-*` are the railways. Helper suite (spawn, monitor, message, land, retire).
 - the `treehouse` worktree pool is the playground.
 
-Best enjoyed with [pi-telegram](https://pi.dev/packages/@llblab/pi-telegram) extension.
+![Work while having a Mojito by the beach](assets/enjoying-the-beach.jpeg)
+
+Best enjoyed with [pi-telegram](https://pi.dev/packages/@llblab/pi-telegram) extension. Work while having a Mojito by the beach.
 
 ## Usage
 
@@ -30,7 +34,7 @@ Ask `mu`, he knows how to use himself.
 Try:
 
 ```
-fix the last 4 issues of mu-commander repo
+fix the last 4 issues of mu-commander gh repo
 ```
 
 _Thanks for your tokens!_
@@ -40,6 +44,30 @@ _Thanks for your tokens!_
 See the **Usage** section above. Try the sample prompt again.
 
 _Thanks for your tokens!_
+
+## Acknowledgements
+
+Thanks to **Mario Zechner** for his minimalist [Pi Agent](https://pi.dev/). It made the `mu-commander` development very easy.
+
+Thanks to **Kun Chen** for inspiring me with [Firstmate](https://github.com/kunchenguid/firstmate). `mu-commander` is a lightweight implementation of **Firstmate**. _Kun_ made an amazing piece of software but it was too opinionated for my personal taste and a token eager. I'm a poor (tokenless) man ;).
+
+Thanks to **Matt Pocock** for his brilliant [AI Skills for Real Engineers](https://github.com/mattpocock/skills). I used to follow him as a master of _Typescript metatyping_ long time ago. In my research to force LLM models to write _beautiful_ code, I found that _Matt_ moved to create skills that follow best practices. At the beginning I was reluctant. I don't like to bloat my prompt with massive skills, but they are really slim and work amazingly well. `mu-commander` uses some forked skills from him.
+
+## Skills
+
+`mu-commander` uses a bunch of slim skills. Their main purpose is direct LLM to create decoupled and maintenable code. They follow a path from **specs definition** to **code auditing**.
+
+> A note on TDD:
+>
+> I used to be a TDD guy since long time ago. I started by forcing LLMs to follow TDD flow but soon I realized that I was wrong. LLMs cheat (as most humans do) about TDD and you can't change it.
+>
+> The essence of TDD is to create the test first to assess the scenario specs. You **can't** even think about the future implementation. LLMs are line TDD rookies, they obsessively explore the codebase at any stage and their goal is to produce production code. They consistently violate the main TDD mandate: **write the minimal test that fullfils the specs -> go to RED -> implement the code -> go to GREEN -> refactor**.
+>
+> Moreover, in my experience, forcing a LLM to follow the TDD flow leads to a massive token and time consumption and no better code generated.
+>
+> This is why the `mu-commander` skills don't follow the TDD flow and focus in produce a more decoupled and LLM maintanable code. 
+
+You can change the shipped skills any time. Just tell `mu` to do it for you.
 
 ## Install
 
@@ -219,22 +247,3 @@ switches it to the configured `fallbackModel`.
 | `SCRATCH_DIR` | `tmp/pi-sub` | gitignored brief/report exchange dir |
 | `SUB_LEVEL` / `SUB_MODEL` / `SUB_THINKING` | — | spawn overrides (flags win) |
 | `SUB_FALLBACK_MODEL` / `SUB_FALLBACK_THINKING` | config `taskLevels` | fallback overrides for `sub-fallback.sh` |
-
-## Dependencies
-
-Required: `bash`, `git`, `tmux`, `treehouse`, `pi`, `jq`, `realpath`
-(coreutils), `gh` — the table under [Install](#install) says what each is
-for, and `./install.sh` installs whatever is missing.
-
-Most scripts verify their tools up front (`need git tmux treehouse jq
-realpath`) and die with a clear `ERROR: missing command: …`. Two are
-softer: `start-main.sh` refuses to start without `pi` (`mu` exits 127), and
-without `gh`, `sub-retire.sh` reports the PR as `unknown` rather than
-failing.
-
-Provided automatically, not installed by hand — **shellcheck**, a declared
-dependency of this repository: `scripts/worktree-setup.sh` downloads the
-pinned, checksum-verified release into `~/.local/bin` the first time a
-worktree is provisioned (`curl` or `wget` is used for that one-time
-download). Language toolchains (Node, `flutter`/`dart`, `cargo`, `go`) are
-*target-repo* concerns of `worktree-setup.sh`, not of this repository.
