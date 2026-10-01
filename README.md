@@ -1,16 +1,45 @@
 # mu-commander
 
-mu-commander is the AI orchestrator pattern for parallel coding sessions:
-one main **pi** session (the orchestrator) drives child pi sessions in
+![mu-comander](assets/logo.svg)
+
+> **μ** /ˈm(j)uː/; 12th letter of the Greek alphabet
+>
+> **หมู** /muː˩˩˦/; Pig in the thai language
+>
+> **muuu** /muː/; Sound emitted by spanish cows
+
+## One Pi session to rule them all
+
+mu-commander is the AI orchestrator for parallel coding sessions:
+one main **pi** session (the orchestrator) drives child pi sessions inside
 **tmux** sessions and the **treehouse** worktree pool.
 
 ## What is it
 
-This repository is the playbook and the tooling for that pattern: the
-`AGENTS.md` operating manual for the orchestrator session, the `mu`
-launcher, the `scripts/sub-*` helper suite (spawn, monitor, message, land,
-retire), the treehouse worktree pool integration, per-feature Gherkin specs
-under `specs/`, and plain-bash tests tagged `[REQ-n]`.
+- The `mu` launcher is the commander in charge.
+- The `AGENTS.md` is the operating manual for the orchestrator session.
+- The `scripts/sub-*` are the railways. Helper suite (spawn, monitor, message, land, retire).
+- the `treehouse` worktree pool is the playground.
+
+Best enjoyed with [pi-telegram](https://pi.dev/packages/@llblab/pi-telegram) extension.
+
+## Usage
+
+Ask `mu`, he knows how to use himself.
+
+Try:
+
+```
+fix the last 4 issues of mu-commander repo
+```
+
+_Thanks for your tokens!_
+
+## Contributing
+
+See the **Usage** section above. Try the sample prompt again.
+
+_Thanks for your tokens!_
 
 ## Install
 
@@ -19,6 +48,12 @@ under `specs/`, and plain-bash tests tagged `[REQ-n]`.
 ```bash
 git clone https://github.com/jseto/mu-commander.git
 cd mu-commander
+```
+
+Execute with
+
+```bash
+mu #should be on the execution path
 ```
 
 ### 2. Dependencies
@@ -30,6 +65,8 @@ PATH):
 ```bash
 ./install.sh
 ```
+
+or let `mu` install them on the fly.
 
 Manual reference for what `./install.sh` covers:
 
