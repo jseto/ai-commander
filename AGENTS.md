@@ -475,11 +475,17 @@ write the task into a file and tell the child to read it.
 composer.** A bare `tmux send-keys -l '…'` + `Enter` races the child's TUI:
 when the Enter lands while pi is mid-redraw (slow extension init, model
 switch) it is dropped and the text sits unsent in the input box — the child
-looks alive but never works. `sub-send.sh` and the spawn path go through the
-shared `tmux_send_line` helper
+looks alive but never works. A completion popup can also swallow the Enter:
+pi's editor accepts the highlighted suggestion (typing e.g. `.agents/` after
+the prompt) and returns without submitting, so "the pane changed" is no
+proof of delivery. `sub-send.sh` and the spawn path go through the shared
+`tmux_send_line` helper
 ([scripts/_sub-common.sh](file://scripts/_sub-common.sh)), which re-types the
-text when it did not appear and retries `Enter` while the pane stays frozen,
-so the instruction actually lands. When driving a child with raw
+text when it did not appear and drives its `Enter` retries from submission
+evidence: inside pi the send only succeeds once the prompt has **left the
+composer and appears in the transcript** — pane noise, redraws, and
+completion mutations never count — and it **fails loudly** after bounded
+retries when it cannot confirm. When driving a child with raw
 `tmux send-keys` (or any other way), apply the same rule yourself: send the
 text first, send a separate `Enter` keystroke, then **verify** it was
 submitted (the pane shows the child working, or `sub-status.sh` shows
