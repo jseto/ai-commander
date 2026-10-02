@@ -10,8 +10,6 @@
 
 _An opinionated (desopinionable) vibe coding project. Use at your own risk_.
 
-## One Pi session to rule them all
-
 mu-commander is the AI orchestrator for parallel coding sessions:
 one main **pi** session (the orchestrator) drives child pi sessions inside
 **tmux** sessions and the **treehouse** worktree pool.
@@ -22,6 +20,7 @@ one main **pi** session (the orchestrator) drives child pi sessions inside
 - The `AGENTS.md` is the operating manual for the orchestrator session.
 - The `scripts/sub-*` are the railways. Helper suite (spawn, monitor, message, land, retire).
 - the `treehouse` worktree pool is the playground.
+- `specs/` holds per-feature Gherkin specs; the plain-bash tests in `tests/` are tagged `[REQ-n]`, one per spec scenario.
 
 ![Work while having a Mojito by the beach](assets/enjoying-the-beach.jpeg)
 
@@ -36,12 +35,6 @@ Try:
 ```
 fix the last 4 issues of mu-commander gh repo
 ```
-
-_Thanks for your tokens!_
-
-## Contributing
-
-See the **Usage** section above. Try the sample prompt again.
 
 _Thanks for your tokens!_
 
