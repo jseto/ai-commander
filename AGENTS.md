@@ -577,6 +577,16 @@ problems are warnings, never failures; skip it with
 `sub-retire.sh <task> --no-branch-cleanup`. GitHub also deletes head branches
 automatically on merge (`delete_branch_on_merge` is enabled for this repo).
 
+**Merging a PR also deletes its associated local branch** (user directive,
+2026-10-03): whenever you merge a PR yourself — the *merge on request*
+housekeeping step, `gh pr merge <n> --squash` and friends — finish the job in
+the same step by pulling the dev base and deleting the PR's local branch from
+the main checkout: `git branch -D <branch>`. Before deleting, confirm nothing
+would be lost with `git diff origin/<dev-base>..<branch>` (empty = safe; a
+squash merge makes plain `-d` refuse, hence `-D`). When the diff is not empty,
+keep the branch and warn instead. Remote heads are GitHub's business
+(`delete_branch_on_merge`), the local branch is yours.
+
 Every successful retirement also appends an `operation` entry to the
 conversation log (`retired <task> | session cost: $0.1234`), with the cost
 summed from the child's own pi session records in its agent directory. A
