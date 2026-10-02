@@ -29,8 +29,9 @@ This change makes the recovery configurable and mechanical:
    latter fails only if an actual error is present and cannot be recovered).
 
 Shipped values (config.json is the **single source of truth** for them):
-`fallbackModel = "opencode-go/mimo-v2.6-flash"`, `fallbackThinking = "high"`
-— a level that model accepts. Per the user directive (2026-09-29), AGENTS.md
+`fallbackModel = "opencode-go/deepseek-v4.1-flash"`,
+`fallbackThinking = "low"` — a level that model accepts. Per the user
+directive (2026-09-29), AGENTS.md
 names no fallback value at all; it only points at the
 `taskLevels.fallbackModel` / `taskLevels.fallbackThinking` entries.
 
@@ -73,16 +74,21 @@ names no fallback value at all; it only points at the
     `low`, `high`, `max`; `xhigh` is rejected with
     `Error: Unknown thinking level "xhigh"`. `--thinking xhigh` on launch is
     *clamped* to `max` instead, and switching to the model clamps the session's
-    current level the same way, so an `xhigh` `standard` child lands on the
-    model's clamp with no `/thinking` needed. The shipped pair must stay
-    consistent: `fallbackModel = "opencode-go/mimo-v2.6-flash"` accepts
-    `off, minimal, low, medium, high` — `max` is rejected with
-    `Error: Unknown thinking level "max". Available levels: …` — so
-    `fallbackThinking = "high"` keeps that model's ceiling.
+    current level the same way, so a child launched with `--thinking xhigh`
+    lands on the model's clamp with no `/thinking` needed. The shipped pair
+    must stay consistent: `fallbackThinking` must name a level
+    `fallbackModel` accepts. Since config retune 3e7c0c3 (2026-10-03) the
+    shipped pair is `fallbackModel = "opencode-go/deepseek-v4.1-flash"`
+    (accepting `low`, `high`, `max`) with `fallbackThinking = "low"`; the
+    round-1 pair `mimo-v2.6-flash` @ `high` verified the same rule — that
+    model accepts `off, minimal, low, medium, high` and rejects `max` with
+    `Error: Unknown thinking level "max". Available levels: …`.
   - The status bar renders the free model as `mimo-v2.6-flash-free`: an id
-    that **extends** the fallback id `mimo-v2.6-flash` (same alphabet prefix
-    + `-free`), so any fixed-substring match on the id confuses the two —
-    the exact collision the live test hit.
+    that **extends** a fallback id shaped like `mimo-v2.6-flash` (same
+    alphabet prefix + `-free`), so any fixed-substring match on the id
+    confuses the two — the exact collision the live test hit. [REQ-14] pins
+    that prefix pair through a fixture config, so the regression stays
+    testable across config retunes.
   - Pi's slash-command argument completion can consume the Enter that
     `tmux_send_line` sends: the pane *reacts* (the popup closes) while the
     command stays in the composer, so the shared helper alone cannot prove
@@ -271,6 +277,14 @@ flowchart TD
       before this task: that commit retuned config.json without updating
       its pinned expectations)
 - [x] Code audit pass, round 3 (below)
+- [x] Round 4 (sync-standard-level-contract): sync the shipped-value pins to
+      config retune 3e7c0c3 — `fallbackModel` → `opencode-go/deepseek-v4.1-flash`,
+      `fallbackThinking` → `low`: feature [REQ-1]/[REQ-6] literals, this
+      design's shipped-pair wording, and the nine shipped-config assertions in
+      `tests/free-limit-fallback.test.sh`; [REQ-14] moved to a fixture config
+      (its premise is the prefix *relationship*, which must survive retunes);
+      full suite green
+- [x] Code audit pass, round 4 (below)
 
 ## Strengths / Weaknesses
 
@@ -441,3 +455,42 @@ disk, ignoring the conversational rationale above.
      exactly the speculative-value note from round 1.
 - **Recommendation strength**: Speculative for all three; audit verdict — no
   architectural friction detected, ship it.
+
+## Code audit, round 4 (sync-standard-level-contract, post-update)
+
+Independent pass per the `code-auditor` skill: the feature file and the
+changed sources were re-read from disk (`scripts/*` have no diff),
+ignoring the conversational rationale above.
+
+- **Overview**: the round kept the seam and the contracts apart. The nine
+  shipped-value assertions moved with the retune (3e7c0c3), while
+  [REQ-14]'s premise — a status-bar id that *extends* the configured
+  fallback id — was decoupled from the shipped config entirely by pinning
+  the prefix pair through a fixture (`SUB_LEVELS_CONFIG` override): the
+  boundary rule (decision 7) now stays testable across any future fallback
+  retune without touching the test again. [REQ-1] remains the designated
+  shipped-value pin; [REQ-6] rides the same shipped config because its
+  Given says "config.json names …". The [REQ-n] chain stayed 1:1 (18
+  scenarios ↔ 18 run lines, plus the supplementary popup regression).
+- **Files**: `specs/free-limit-fallback/free-limit-fallback.feature`,
+  `specs/free-limit-fallback/free-limit-fallback-design.md` (shipped-pair
+  wording), `tests/free-limit-fallback.test.sh`.
+- **Problem / Solution / Benefits**: no friction — detection, verified
+  send, and status-bar confirmation are untouched, so "never speculative"
+  and the loud-failure outcomes are structurally unchanged, not merely
+  re-asserted.
+- **Less valuable improvements** (noted, deliberately not done):
+  1. The e2e tests besides [REQ-1]/[REQ-6] inherit the shipped config from
+     `setup()` and therefore break on every retune; seeding them from a
+     fixture and reading the shipped pair only in the two scenarios whose
+     Given names the shipped file would cut future syncs to those two.
+     *Worth exploring* if retunes become frequent — today the fail-loudly
+     behaviour is the contract working as designed.
+  2. The shipped model is pinned as literals in three places per e2e test
+     (log grep, footer grep, error probe); a `SHIPPED_MODEL` read once
+     from `config.json` would localize a sync to one assignment.
+     *Speculative*: it would make the assertions self-fulfilling (a wrong
+     config would produce matching expectations), losing the drift
+     detection these pins exist for.
+- **Recommendation strength**: Worth exploring (1), Speculative (2); audit
+  verdict — no architectural friction detected, ship it.
