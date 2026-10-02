@@ -1,8 +1,8 @@
 {
   "taskLevels": {
     "default": "standard",
-    "fallbackModel": "opencode-go/mimo-v2.6-flash",
-    "fallbackThinking": "high",
+    "fallbackModel": "opencode-go/deepseek-v4.1-flash",
+    "fallbackThinking": "low",
     "levels": {
       "easy": {
         "description": "Chores, trims, config and docs edits, small fixes.",
@@ -11,8 +11,8 @@
       },
       "standard": {
         "description": "Features and bug fixes with the full specs flow.",
-        "model": "opencode-go/mimo-v2.6-flash",
-        "thinking": "xhigh"
+        "model": "opencode-go/deepseek-v4.1-flash",
+        "thinking": "medium"
       },
       "hard": {
         "description": "Architecture, root-cause analysis, long-haul work.",
