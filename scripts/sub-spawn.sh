@@ -173,8 +173,10 @@ sleep 0.5
 # The resolved model/thinking options join the command line ahead of the
 # kickoff (pi_launch_command), where pi parses them as options.
 PI_LAUNCH=$(pi_launch_command "$PI_BIN" "$TASK" "$CHILD_LAUNCH_FLAGS" "$KICKOFF")
-# tmux_send_line retries the Enter (and re-types the line) until the pane shows
-# it was picked up, so a dropped keystroke cannot leave the child idle. An
+# tmux_send_line retries the Enter (and re-types the line) until the launch
+# is confirmed — this pane is a shell (pi has not booted yet), so the
+# confirmation is the pane content changing after an Enter — so a dropped
+# keystroke cannot leave the child idle. An
 # unconfirmed launch fails the spawn: reporting handles for a child that never
 # started is worse than a loud failure (the trap above releases everything).
 tmux_send_line "$SESS" "$PI_LAUNCH" \

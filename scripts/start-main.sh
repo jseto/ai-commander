@@ -79,8 +79,10 @@ tmux set-window-option -t "$SESS:" main-pane-width 50% >/dev/null 2>&1 || true
 tmux select-layout -t "$SESS:" main-vertical >/dev/null 2>&1 || true
 sleep 0.5
 # Plain $PI_BIN, no -n/--no-extensions: the main session is not a child.
-# tmux_send_line re-types the line and retries Enter until the pane shows it
-# was picked up, so a dropped keystroke cannot leave the session without pi.
+# tmux_send_line re-types the line and retries Enter until the launch is
+# confirmed — this pane is a shell (no pi TUI yet), so the confirmation is
+# the pane content changing after an Enter — and a dropped keystroke cannot
+# leave the session without pi.
 printf -v LAUNCH '%q' "$PI_BIN"
 tmux_send_line "$SESS" "$LAUNCH"
 

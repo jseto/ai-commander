@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Behavioural tests for scripts/sub-report.sh (shared verified send).
-# One test per Scenario in specs/sub-report-notice/sub-report-notice.feature.
+# Behavioural tests for scripts/sub-report.sh (shared verified send) and the
+# fix-send-confirm incident regression through sub-send.sh.
+# Labels [REQ-n] trace specs/sub-report-notice/sub-report-notice.feature;
+# labels [fix-send-confirm REQ-n] trace specs/fix-send-confirm.
 #
 # Each test sandboxes a stateful fake tmux binary placed first on PATH — its
 # pane/session state lives in a per-test temp dir, driven by FAKE_TMUX_MODE
-# (ok | drop-text | drop-enter). No real tmux session — and specifically the
-# live orchestrator session — is ever touched.
+# (ok | drop-text | drop-enter | redraw). The pane is rendered with pi's
+# real TUI structure (transcript / spinner / composer / status border /
+# path / stats) so the verified send exercises its evidence path. No real
+# tmux session — and specifically the live orchestrator session — is ever
+# touched.
 set -u
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -31,16 +36,24 @@ setup() {
   cat > "$SB/bin/tmux" <<'EOS'
 #!/usr/bin/env bash
 # Stateful fake tmux: sessions/pane/log live in $FAKE_TMUX_DIR.
-# FAKE_TMUX_MODE controls the pane behaviour of send-keys:
-#   ok         - text is echoed and Enter submits (pane content changes)
+# The pane renders pi's TUI structure: transcript ("pane" file), gap+spinner,
+# composer, status border, path, stats.
+# FAKE_TMUX_MODE controls the behaviour of send-keys:
+#   ok         - text lands in the composer; Enter moves it to the transcript
 #   drop-text  - text never appears in the pane (send is lost)
-#   drop-enter - text appears but Enter is swallowed (flattened pane static)
+#   drop-enter - text appears but Enter is swallowed (pane fully static)
+#   redraw     - Enter TICKS the stats line (the pane changes!) while the
+#                text stays parked — the 2026-10-02/10-04 incident
+#                fingerprint (completion mutation without submission)
 set -u
 S=${FAKE_TMUX_DIR:?FAKE_TMUX_DIR not set}
 mkdir -p "$S"
 [ -f "$S/sessions" ] || : > "$S/sessions"
 [ -f "$S/log" ]      || : > "$S/log"
 [ -f "$S/pane" ]     || : > "$S/pane"
+[ -f "$S/composer" ] || : > "$S/composer"
+[ -f "$S/tick" ]     || : > "$S/tick"
+D='────────────────────────────────────────────────────────────────────'
 
 session_exists() {
   local t=${1#=}
@@ -73,17 +86,31 @@ case "${1:-}" in
     done
     mode=${FAKE_TMUX_MODE:-ok}
     if [ "$literal" = 1 ]; then
-      [ "$mode" = drop-text ] || printf '%s' "$text" >> "$S/pane"
-    else
-      case "$mode" in
-        ok)         printf '\n<<submitted>>\n' >> "$S/pane" ;;
-        drop-enter) printf '\n' >> "$S/pane" ;;  # echoed newline only: flattened content unchanged
-        drop-text)  : ;;
-      esac
+      [ "$mode" = drop-text ] || printf '%s' "$text" >> "$S/composer"
+      exit 0
     fi
+    case "$mode" in
+      ok)
+        if [ -s "$S/composer" ]; then
+          cat "$S/composer" >> "$S/pane"
+          printf '\n' >> "$S/pane"
+          : > "$S/composer"
+        fi ;;
+      drop-enter) : ;;
+      redraw)
+        n=$(cat "$S/tick")
+        printf '#%s' "$(( ${n:-0} + 1 ))" > "$S/tick" ;;
+    esac
+    exit 0
     ;;
   capture-pane)
-    cat "$S/pane"
+    if [ -s "$S/pane" ]; then cat "$S/pane"; fi
+    printf '\n%s\n' "$D"          # gap + spinner row
+    if [ -s "$S/composer" ]; then cat "$S/composer"; printf '\n'; else printf '\n'; fi
+    printf '%s\n' "$D"            # status border
+    printf '%s\n' '/test/main (task/main)'
+    printf 'stats line %s\n' "$(cat "$S/tick")"
+    exit 0
     ;;
   *)
     exit 0
@@ -96,6 +123,8 @@ EOS
   : > "$FAKE_TMUX_DIR/sessions"
   : > "$FAKE_TMUX_DIR/pane"
   : > "$FAKE_TMUX_DIR/log"
+  : > "$FAKE_TMUX_DIR/composer"
+  : > "$FAKE_TMUX_DIR/tick"
   export FAKE_TMUX_MODE=ok
   # Pin the target env: the test shell may inherit MAIN_SESSION/MAIN_PANE
   # from a live tmux session, which must not leak into the sandbox.
@@ -238,6 +267,49 @@ t_supp_sub_send_unconfirmed_is_loud() {
 }
 
 # ---------------------------------------------------------------------------
+# fix-send-confirm: the field-incident regression, end to end through the
+# script callers (specs/fix-send-confirm/fix-send-confirm.feature)
+# ---------------------------------------------------------------------------
+
+# [fix-send-confirm REQ-2/REQ-5] the 2026-10-02/10-04 incident: the pane
+# changes on every Enter (completion mutation / redraw) while the prompt
+# stays parked in the composer. sub-send must NOT print "instruction sent";
+# it must retry Enter and fail loudly.
+t_send_req2_incident_never_reported_as_sent() {
+  setup
+  add_session "$SESS"
+  export FAKE_TMUX_MODE=redraw
+  run_send "$TASK" "long instruction that stays parked with a ghost suffix"
+  expect_rc_nonzero
+  expect_err "ERROR:"
+  expect_not_out "instruction sent"
+  local enters; enters=$(count_enter)
+  [ "$enters" -ge 2 ] || fail "Enter not retried ($enters sends): $(cat "$FAKE_TMUX_DIR/log")"
+  grep -Fq -- "long instruction that stays parked" "$FAKE_TMUX_DIR/composer" \
+    || fail "the parked instruction must still be in the composer"
+}
+
+# [fix-send-confirm REQ-8] the success path keeps its exact wording: callers
+# parse it.
+t_send_req8_success_wording_unchanged() {
+  setup
+  add_session "$SESS"
+  run_send "$TASK" "a follow-up that lands"
+  expect_rc0
+  expect_out "instruction sent to $SESS"
+}
+
+# [fix-send-confirm REQ-9] AGENTS.md documents the evidence-based contract.
+t_send_req9_agents_md_documents_evidence_contract() {
+  grep -Fq "prompt has **left the" "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md does not document that success requires leaving the composer"
+  grep -Fq "composer and appears in the transcript" "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md does not document the transcript evidence"
+  grep -q "fails loudly\|fail loudly" "$ROOT/AGENTS.md" \
+    || fail "AGENTS.md does not document the loud-failure contract"
+}
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -261,6 +333,9 @@ run "[REQ-7] sub-send keeps delivering via shared helper"     t_req7_sub_send_st
 run "[REQ-8] AGENTS.md documents the delivery contract"       t_req8_agents_md_documents_contract
 run "[REQ-9] shellcheck touched scripts"                      t_req9_shellcheck_touched_scripts
 run "[supp] sub-send unconfirmed instruction fails loudly"    t_supp_sub_send_unconfirmed_is_loud
+run "[fix-send-confirm REQ-2/REQ-5] parked incident never reported" t_send_req2_incident_never_reported_as_sent
+run "[fix-send-confirm REQ-8] success wording unchanged"       t_send_req8_success_wording_unchanged
+run "[fix-send-confirm REQ-9] AGENTS.md documents evidence contract" t_send_req9_agents_md_documents_evidence_contract
 
 if [ "$failures" -gt 0 ]; then
   printf '\n%d test(s) failed\n' "$failures"

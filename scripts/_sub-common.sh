@@ -274,44 +274,211 @@ _flatten() { printf '%s' "$1" | tr -d '[:space:]'; }
 # Flattened text currently shown in a pane.
 _pane_flattened() { tmux capture-pane -t "$1" -p 2>/dev/null | tr -d '[:space:]' || true; }
 
+# Split one capture of a pi TUI pane into its regions. Reads the capture on
+# stdin and sets globals — the caller needs every region from ONE capture
+# (the pane changes between polls, so per-region captures could race):
+#
+#   _pi_layout  1 when the capture shows pi's TUI: a box-drawing border line
+#               (pi's status border) within six lines above the pane's last
+#               non-empty line (the stats bar). 0 otherwise — a shell, a
+#               mid-boot or foreign TUI: "no submission evidence possible".
+#   _pi_comp    flattened composer region: the contiguous non-blank block
+#               directly above that border. Empty when the composer is (pi
+#               draws a blank line there); a parked line pushes the spinner
+#               row up into the block.
+#   _pi_trans   flattened transcript region: everything above that block.
+#   _pi_below   flattened region below the border (pi's path/stats bar —
+#               and, on a pane that merely looks like pi, the shell prompt
+#               line where the typed text sits).
+#   _pi_all     flattened whole capture.
+#
+# The regions are what "parked" vs "submitted" means: a prompt that is in
+# _pi_comp is unsent; a prompt that left _pi_comp and shows up in _pi_trans
+# was received. The parser never guesses from elapsed time or bare pane
+# activity — an unrecognized layout reports _pi_layout=0 with empty regions
+# so callers treat it as "no evidence", never as success.
+_pi_parse_regions() {
+  local -a L=()
+  local last=-1 b=-1 top i s
+  _pi_layout=0 _pi_comp='' _pi_trans='' _pi_below='' _pi_all=''
+  mapfile -t L
+  _pi_all=$(printf '%s\n' "${L[@]}" | tr -d '[:space:]')
+  for (( i = ${#L[@]} - 1; i >= 0; i-- )); do
+    if [[ ${L[i]} == *[![:space:]]* ]]; then last=$i; break; fi
+  done
+  # Status border: the lowest box-drawing line near the bottom. Byte-exact
+  # dash stripping keeps this locale-independent (the system awk is mawk,
+  # whose multibyte regexes would misfire — hence pure bash + tr here).
+  if (( last > 0 )); then
+    for (( i = last - 1; i >= 0 && i >= last - 6; i-- )); do
+      s=${L[i]//[[:space:]]/}
+      [ -n "$s" ] || continue
+      if [ -z "${s//─/}" ]; then b=$i; break; fi
+    done
+  fi
+  [ "$b" -ge 0 ] || return 0
+  _pi_layout=1
+  top=$b
+  for (( i = b - 1; i >= 0; i-- )); do
+    [[ ${L[i]} == *[![:space:]]* ]] || break
+    top=$i
+  done
+  for (( i = top; i < b; i++ )); do _pi_comp+=${L[i]}; done
+  for (( i = 0; i < top; i++ )); do _pi_trans+=${L[i]}; done
+  for (( i = b + 1; i < ${#L[@]}; i++ )); do _pi_below+=${L[i]}; done
+  _pi_comp=$(printf '%s' "$_pi_comp" | tr -d '[:space:]')
+  _pi_trans=$(printf '%s' "$_pi_trans" | tr -d '[:space:]')
+  _pi_below=$(printf '%s' "$_pi_below" | tr -d '[:space:]')
+  return 0
+}
+
+# Fill the _pi_* globals from a live pane capture. Never fails: a failed
+# capture clears them (layout 0 = "no evidence"), so a dead target can never
+# confirm a send with stale regions.
+_pi_regions_of() { # $1=tmux target
+  local cap
+  if cap=$(tmux capture-pane -t "$1" -p 2>/dev/null); then
+    _pi_parse_regions <<<"$cap"
+  else
+    _pi_layout=0 _pi_comp='' _pi_trans='' _pi_below='' _pi_all=''
+  fi
+  return 0
+}
+
+# True when the pane currently holds the line in pi's composer — the prompt
+# is parked (unsent). Needs a recognized layout; "no evidence" is false.
+_pi_composer_holds() { # $1=probe
+  [ "$_pi_layout" = 1 ] && grep -qF -- "$1" <<<"$_pi_comp"
+}
+
+# True when the pane shows submission evidence for the line: it left the
+# composer and appears in the transcript region. Pane activity, redraws and
+# completion mutations never satisfy this.
+_pi_submission_evidence() { # $1=probe
+  [ "$_pi_layout" = 1 ] \
+    && grep -qF -- "$1" <<<"$_pi_trans" \
+    && ! grep -qF -- "$1" <<<"$_pi_comp"
+}
+
 # Type a line into a tmux pane and make sure it actually runs.
 #
 # A bare `send-keys -l` + `Enter` races the target TUI's startup: pi can be
-# mid-redraw (slow extension init) when the Enter arrives, and the keystroke is
-# dropped, leaving the text parked in the composer. This helper is defensive on
-# both halves of the problem — it re-types when the text never appeared, and it
-# retries Enter while the pane content stays frozen (an unsubmitted line looks
-# exactly like a static screen). Extra Enters on an empty composer are
-# harmless; a silently unsent prompt is not.
+# mid-redraw (slow extension init, model switch, compaction) when the Enter
+# arrives, and the keystroke is dropped, leaving the text parked in the
+# composer. Seeing the text — or any pane change — is NOT proof of
+# submission (a busy redraw changes the pane too), so this helper confirms
+# positively, per pane kind:
 #
-# Returns 0 only when the pane content changed after an Enter — the line was
-# confirmed submitted. Returns 1 when it could not be confirmed: the text
-# never appeared after re-typing, the pane stayed frozen through every Enter
-# retry, or send-keys itself failed (target gone). Callers decide what an
-# unconfirmed send means for them; the sub-* scripts treat it as fatal so a
-# stranded line can never be reported as delivered.
+#   * pi's TUI (status-border layout, see _pi_parse_regions): success needs
+#     submission evidence — the line left the composer region and appears in
+#     the transcript region. While the line sits in the composer, Enter is
+#     retried (bounded by [attempts]) no matter what else the pane does. A
+#     line that vanishes from the pane without ever reaching the transcript
+#     (TUI reset / compaction wipe) is typed once more; a second vanish or
+#     exhausted attempts fails.
+#   * any other pane (a shell — the start-main.sh / sub-spawn.sh launch
+#     path, where the typed line lives at the prompt, below pi's border):
+#     the legacy confirmation — the pane content changed after an Enter.
+#
+# Returns 0 only when confirmed submitted. Returns 1 when it could not be
+# confirmed: the text never appeared after re-typing, the line stayed parked
+# through every Enter retry, the prompt vanished twice, or send-keys itself
+# failed (target gone). Callers decide what an unconfirmed send means for
+# them; the sub-* scripts treat it as fatal so a stranded line can never be
+# reported as delivered.
 tmux_send_line() { # $1=tmux target $2=text [attempts] [settle seconds]
   local target=$1 text=$2 attempts=${3:-4} settle=${4:-1}
-  local probe before after i
+  local probe before after i strict=0 retyped=0
   probe=$(_flatten "$text")
-  # The composer always shows the END of the text, so its tail survives the
-  # pane wrapping even when the head scrolls out of view.
-  probe=${probe: -60}
+  # Both regions are bottom-anchored (the composer and the newest transcript
+  # line sit at the pane's foot), so the tail survives pane wrapping and
+  # scrollback even when the head of a long line is out of view. Bash's
+  # ${var: -60} yields an EMPTY string for strings shorter than 60, so clamp
+  # to the full text instead of silently probing for "".
+  if [ ${#probe} -gt 60 ]; then probe=${probe: -60}; fi
+  if [ -z "$probe" ]; then
+    warn "nothing to send to $target (empty line)"
+    return 1
+  fi
+  # 1) Type the line until it is visible somewhere in the pane.
   for (( i = 0; i < 2; i++ )); do
     tmux send-keys -t "$target" -l "$text"
     sleep 0.4
-    _pane_flattened "$target" | grep -qF -- "$probe" && break
+    if _pane_flattened "$target" | grep -qF -- "$probe"; then break; fi
     warn "text not visible in $target yet; retyping"
   done
-  before=$(_pane_flattened "$target")
+  if ! _pane_flattened "$target" | grep -qF -- "$probe"; then
+    warn "the text never appeared in $target — not claiming it was sent"
+    return 1
+  fi
+  # 2) Decide from where the text landed what may confirm the send. On a pi
+  #    pane the typed line belongs in the composer; a copy seen anywhere else
+  #    predates this send (or is a coincidence), so there is nothing to
+  #    confirm. Below the border, or on a pane without the layout, is the
+  #    shell-launch case: legacy change check.
+  _pi_regions_of "$target"
+  if [ "$_pi_layout" = 1 ]; then
+    if _pi_composer_holds "$probe"; then
+      strict=1
+    elif grep -qF -- "$probe" <<<"$_pi_trans"; then
+      warn "the visible copy of the text in $target is in the transcript, not the composer — not claiming this send"
+      return 1
+    elif ! grep -qF -- "$probe" <<<"$_pi_below"; then
+      warn "the text never reached $target's composer — not claiming it was sent"
+      return 1
+    fi
+  fi
+  before=$_pi_all   # baseline from the decision capture (same pane, no re-capture)
   for (( i = 0; i < attempts; i++ )); do
     tmux send-keys -t "$target" Enter
     sleep "$settle"
-    after=$(_pane_flattened "$target")
-    [ "$after" != "$before" ] && return 0
-    before=$after
+    _pi_regions_of "$target"
+    # Escalate the moment the line is seen inside a pi composer — even a send
+    # that started out generic must never be confirmed while parked.
+    if _pi_composer_holds "$probe"; then
+      strict=1
+    fi
+    if [ "$strict" = 1 ]; then
+      # Layout lost (mid-redraw / dead target): no evidence, retry bounded.
+      if [ "$_pi_layout" = 1 ]; then
+        # Positive evidence: the line left the composer and reached the transcript.
+        if _pi_submission_evidence "$probe"; then
+          return 0
+        fi
+        # Gone from the whole pane without ever reaching the transcript:
+        # a TUI reset wiped it — type it once more, then stay strict. One
+        # quick re-capture first: a merely LATE transcript render must not
+        # lead to a duplicate line.
+        if ! grep -qF -- "$probe" <<<"$_pi_all"; then
+          sleep 0.2
+          _pi_regions_of "$target"
+          if _pi_submission_evidence "$probe"; then
+            return 0 # the transcript render was only slow — submitted
+          fi
+          if grep -qF -- "$probe" <<<"$_pi_all"; then
+            continue # the line is back (TUI restored it): parked again
+          fi
+          if [ "$retyped" -ge 1 ]; then
+            warn "the prompt vanished from $target again — not claiming it was sent"
+            return 1
+          fi
+          retyped=1
+          warn "the prompt vanished from $target without reaching the transcript; retyping"
+          tmux send-keys -t "$target" -l "$text"
+          sleep 0.4
+        fi
+      fi
+      continue # still parked (or no evidence yet): retry Enter
+    fi
+    # Shell-like pane: legacy confirmation on the same capture, guarded so a
+    # pane that turns out to hold a parked pi composer can never satisfy it.
+    if [ -n "$_pi_all" ]; then
+      after=$_pi_all
+      if [ "$after" != "$before" ]; then return 0; fi
+      before=$after
+    fi
   done
-  warn "could not confirm that $target picked up the line; check the pane"
+  warn "could not confirm that $target submitted the line; check the pane"
   return 1
 }
 
