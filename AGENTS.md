@@ -719,6 +719,17 @@ one identifier the whole pattern keys on: it becomes the tmux session
 - Prefer the `scripts/sub-*.sh` helpers over raw tmux/treehouse/git command
   sequences; they encode every rule below (and refuse double-booking,
   lost-work retirements, and wrong-base branches for you).
+- **Never pipe helper output through a truncating reader** (`… | head -N`,
+  `head -c`, `| tail -n +K`): when that reader exits early it closes the
+  helper's stdout pipe, the helper's writes die with SIGPIPE (141) under
+  `set -euo pipefail`, and its `cleanup_on_error` trap rolls back a
+  *healthy* child — killing a freshly booted session and its lease (RCA:
+  2026-10-02 `head -14` incident, `tmp/pi-sub/reports/spawn-failure-rca.md`;
+  the truncation also swallowed the decisive `WARNING:`). Capture the full
+  output into a variable or a temp file first, then read as much or as
+  little as you want (`$(cmd …)`, `cmd > f; sed -n '…p' f`); a plain
+  `| grep`/`| tail -50` is also safe — only an early-exiting *bounded* read
+  closes the pipe. Same rule for `sub-report.sh` notices: never truncate.
 - `pi-main` for the orchestrator, `pi-<task>` for each child; one concern per
   session, same rule as every other tmux session. **Verify the orchestrator is
   actually named `pi-main`** (`tmux display-message -p '#S'`) or set
