@@ -291,6 +291,10 @@ exception is the last row of the routing table below.
 
 **The atomic-specs flow must be done EXCLUSIVELY by the children.** You launch a child with the user's input and delegate to it the FULL flow: from atomic specs (Gherkin/design), through implementation (per the `implement` skill), to a code audit (code-auditor). The child goes back to you ONLY when it needs the user's input or when it has completed the full task through to opening a PR. Your job is ONLY to manage child task assignments and handle child feedback (whether a question for the user or a finished task report).
 
+**Do not spell that flow out in a brief** — the child takes it from the
+project's own `AGENTS.md`; a brief only says *what* is required (and, at most,
+"follow the `atomic-specs` flow per this repo's AGENTS.md").
+
 **Exception — plain-text docs skip atomic-specs.** When the task only
 edits plain-text documentation (README, Markdown guides, AGENTS.md-style
 operational docs, comments-as-docs), do **not** apply the atomic-specs
@@ -663,6 +667,15 @@ the **requirements** if they aren't in a readable issue, the **repo** if it
 is ambiguous, the **report path** if it should differ from the default
 (`tmp/pi-sub/reports/<task-name>.md`), or a **task name** when it must match an
 external identifier.
+
+**Briefs never spell out the process flow** (user directive, 2026-10-02):
+do not copy the atomic-specs → implement → code-auditor steps — or any other
+process description — into `tmp/pi-sub/tasks/<task>.md`. The child gets the
+flow from the **project's own `AGENTS.md`**, which it reads at startup; the
+brief carries only the *what*: the requirement/issue, context/constraints, and
+deliverables (branch, PR, report path). One line suffices — e.g. *"Follow the
+`atomic-specs` flow per this repo's AGENTS.md."* Never re-derive in a brief a
+process the repo already documents.
 
 ### Referring to a subsession
 
