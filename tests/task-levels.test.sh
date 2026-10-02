@@ -74,8 +74,8 @@ t_req1_default_level_uses_shipped_defaults() {
   resolve "" "" ""
   [ "$RC" -eq 0 ] || fail "expected exit 0, got $RC ($RERR)"
   [ -z "$RERR" ] || fail "expected no warning, got: $RERR"
-  [ "$OUT" = "--model opencode-go/mimo-v2.6-flash --thinking xhigh" ] \
-    || fail "default level should resolve to the shipped standard model @ xhigh, got: $OUT"
+  [ "$OUT" = "--model opencode-go/deepseek-v4.1-flash --thinking medium" ] \
+    || fail "default level should resolve to the shipped standard model @ medium, got: $OUT"
 }
 
 t_req2_named_levels_select_their_mapping() {
@@ -91,10 +91,10 @@ t_req2_named_levels_select_their_mapping() {
 t_req3_explicit_flags_beat_the_level_mapping() {
   jq_ok || return 0
   resolve "" "" low
-  [ "$OUT" = "--model opencode-go/mimo-v2.6-flash --thinking low" ] \
+  [ "$OUT" = "--model opencode-go/deepseek-v4.1-flash --thinking low" ] \
     || fail "thinking flag should keep the level's model, got: $OUT"
   resolve "" custom/m ""
-  [ "$OUT" = "--model custom/m --thinking xhigh" ] \
+  [ "$OUT" = "--model custom/m --thinking medium" ] \
     || fail "model flag should keep the level's thinking, got: $OUT"
 }
 
@@ -236,7 +236,7 @@ run() {
   fi
 }
 
-run "[REQ-1]  default level resolves the shipped initial config"   t_req1_default_level_uses_shipped_defaults
+run "[REQ-1]  default level resolves the shipped config"          t_req1_default_level_uses_shipped_defaults
 run "[REQ-2]  named levels select their configured mapping"        t_req2_named_levels_select_their_mapping
 run "[REQ-3]  explicit flags beat the level mapping"               t_req3_explicit_flags_beat_the_level_mapping
 run "[REQ-4]  env overrides apply, flags win over env"             t_req4_env_overrides_and_flag_precedence
