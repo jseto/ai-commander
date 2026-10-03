@@ -7,13 +7,13 @@ passes one of three levels to the spawn; the level maps to the child's
 model and thinking level. The mapping is **configuration, not code**: it
 lives in `config.json` at the repository root — a generic, root-level
 configuration file namespaced under the `taskLevels` top-level section so
-future general settings can sit beside it — seeded with the shipped
-values:
+future general settings can sit beside it — seeded with the orchestrator's
+initial defaults:
 
 | Level | For | Model | Thinking |
 |---|---|---|---|
 | `easy` | chores, trims, config/docs edits | `opencode-zen-free/mimo-v2.6-flash-free` | `high` |
-| `standard` (default) | features/bug fixes, full specs+TDD flow | `opencode-go/deepseek-v4.1-flash` | `medium` |
+| `standard` (default) | features/bug fixes, full specs+TDD flow | `opencode-go/mimo-v2.6-flash` | `xhigh` |
 | `hard` | architecture, root-cause, long-haul work | `opencode-go/deepseek-v4.1-flash` | `max` |
 
 Retuning the trade-off (e.g. moving a model, changing a thinking cap) is a
@@ -125,11 +125,6 @@ flowchart TD
       `defaultThinkingLevel`, `modelThinkingLevels`, `defaultProjectTrust`).
       Its feature file and tests stay valid (its fixtures declare none of the
       new keys) — the superset behaviour is asserted here under [REQ-8].
-- [x] Sync to config retune 3e7c0c3 (2026-10-03, task brief
-      sync-standard-level-contract): narrative header + [REQ-1] echo + this
-      table → `standard = deepseek-v4.1-flash @ medium`, "initial
-      defaults" wording → "shipped values", test expectations synced;
-      suite green
 
 ## Strengths / Weaknesses
 
@@ -181,36 +176,3 @@ rationale.
      (existing weakness, unchanged by the refactor).
 - **Recommendation strength**: Speculative for all three; audit verdict —
   no architectural friction detected, ship it.
-
-## Code audit (standard-level sync, post-update)
-
-Independent pass per the `code-auditor` skill: the feature file and the
-changed sources (`config.json` as the contract source, the shipped-value
-pins) were re-read from disk, ignoring the conversational rationale.
-
-- **Overview**: the sync is expectation-follow-up to the user's config
-  retune (3e7c0c3), zero behaviour change: the [REQ-n] chain stayed 1:1
-  (12 scenarios ↔ 12 run lines), and the resolver seam
-  (`resolve_child_launch_flags` → three option words) did not move, so
-  every test crosses exactly the interface it crossed before. The wording
-  "initial defaults" → "shipped values" (narrative, four Given lines, this
-  design's table) removes a stale historical claim: the contract is now
-  "whatever `config.json` ships", pinned by [REQ-1].
-- **Files**: `specs/child-task-levels/child-task-levels.feature`,
-  `specs/child-task-levels/child-task-levels-design.md`,
-  `tests/task-levels.test.sh`.
-- **Problem / Solution / Benefits**: no friction found — no architectural
-  change was needed or made; a retune is a JSON edit plus a value sync,
-  which is exactly this design's stated strength.
-- **Less valuable improvements** (noted, deliberately not done):
-  1. The shipped contract is pinned in several places (`config.json`,
-     feature narrative, feature [REQ-1]/[REQ-2], test expectations, this
-     table) — a drift-detection test that parses the feature's echo line
-     against `config.json` would make the next retune fail in one obvious
-     place. *Speculative*: the suite already fails loudly on retune, and
-     the parser would be more code than the pins it guards.
-  2. The narrative value list duplicates [REQ-1]/[REQ-2]; it could
-     reference the scenarios instead. *Speculative*: a one-glance level
-     table is the point of a narrative header.
-- **Recommendation strength**: Speculative for both; audit verdict — no
-  architectural friction detected, ship it.

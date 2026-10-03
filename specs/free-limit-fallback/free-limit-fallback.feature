@@ -22,8 +22,8 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
     Given the repository's root config.json with its shipped taskLevels
       section
     When resolve_fallback_model is called with no override
-    Then it echoes "opencode-go/deepseek-v4.1-flash" and exits 0
-    And resolve_fallback_thinking echoes "low" and exits 0 without warnings
+    Then it echoes "opencode-go/mimo-v2.6-flash" and exits 0
+    And resolve_fallback_thinking echoes "high" and exits 0 without warnings
 
   Scenario: Env overrides win over the configured fallback [REQ-2]
     Given SUB_FALLBACK_MODEL=custom/fb and SUB_FALLBACK_THINKING=low are set
@@ -54,9 +54,9 @@ Feature: Fallback model for the free provider's usage limit (sub-fallback)
 
   Scenario: A detected error switches the child to the fallback [REQ-6]
     Given a running child whose pane shows the free-limit error
-    And config.json names fallbackModel "opencode-go/deepseek-v4.1-flash"
+    And config.json names fallbackModel "opencode-go/mimo-v2.6-flash"
     When sub-fallback.sh runs for the task
-    Then "/model opencode-go/deepseek-v4.1-flash" is sent through the
+    Then "/model opencode-go/mimo-v2.6-flash" is sent through the
       verified send and confirmed
     And it waits until the child's status bar shows the model id as a
       delimited token, not as a substring of a longer id
