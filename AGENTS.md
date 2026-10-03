@@ -334,6 +334,16 @@ Hard rules:
   questions go to the proper child and its answer comes back verbatim, tasks
   get a spawned or live working child. Only an explicit request to change
   the main session's own behaviour short-circuits the relay.
+- **Tests never test documents or config files** (user directive, 2026-10-03,
+  "Tests should never test documents nor config files"): no test may assert
+  the contents of a document (`README.md`, `AGENTS.md`, …) or of a config file
+  (`config.json`, …) — tests exercise behaviour, feeding fixtures as inputs
+  when needed, but the shipped document/config content itself is not the
+  subject under test.
+- **Never touch `README.md`** (user directive, 2026-10-03, "you should never
+  touch readme.md file"): the main session never edits a README, and a brief
+  must not instruct a child to change one either — if a task would require
+  editing a README, ask the user before proceeding.
 - **Never do a child's task mechanics on its behalf** (user directive,
   2026-09-30, "this task is not yours"): leasing worktrees, creating
   branches, repo/PR setup, moving files, fixing the child's output, or any
