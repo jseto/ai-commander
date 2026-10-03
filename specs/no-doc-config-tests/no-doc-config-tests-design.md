@@ -72,7 +72,7 @@ the `[REQ-n]` chain stays unbroken for the scenarios that remain.
 | `specs/readme/README.feature` | `[REQ-1]`…`[REQ-9]` (folder removed) |
 | `specs/install-script/install-script.feature` | `[REQ-11]` |
 | `specs/rename-mu-commander/rename-mu-commander.feature` | `[REQ-2]`, `[REQ-4]`, `[REQ-5]` |
-| `specs/rename-ai-commander/rename-ai-commander.feature` | `[REQ-6]` |
+| the earlier rename's feature file | `[REQ-6]` |
 | `specs/retire-cost-log/retire-cost-log.feature` | `[REQ-7]` |
 | `specs/sub-report-notice/sub-report-notice.feature` | `[REQ-8]` |
 | `specs/fix-send-confirm/fix-send-confirm.feature` | `[REQ-9]` |
